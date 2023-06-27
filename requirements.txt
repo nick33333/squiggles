@@ -2,3 +2,9 @@ flask
 numpy
 flask-bootstrap
 pandas
+matplotlib
+tslearn
+scipy
+scikit-learn
+h5py
+werkzeug
