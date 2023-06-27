@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from werkzeug.utils import secure_filename
 import os
+from tslearn.clustering import TimeSeriesKMeans
 
 '''
 To use flask shell:
@@ -37,11 +38,11 @@ app.config['preprocessing'] = "msmc_rtp_it" # msmc, msmc_it, and msmc_rtp_it (re
 app.config['k'] = 7 # k= 2, ..., 15, ... models should be ready
 
 # Will fill up this dict with some fat models using specified settings
-msmc_obj_dict = dict()
-msmc_obj_dict[app.config['k']] = pd.read_pickle(f"models/{app.config['animal']}_{app.config['preprocessing']}_k{app.config['k']}_blob.pkl")
+km_dict = dict()
+km_dict[app.config['k']] = TimeSeriesKMeans.from_pickle(f"models/{app.config['animal']}_{app.config['preprocessing']}_k{app.config['k']}_km.pkl")
 
 # My testing model
-app.config[f"k{app.config['k']}"] = msmc_obj_dict[app.config['k']][0][3][app.config['k']][999].km # Should be a tslearn TimeSeriesKMeans obj
+app.config[f"k{app.config['k']}"] = km_dict[app.config['k']] # Should be a tslearn TimeSeriesKMeans obj
 
 @app.route("/") # app.route decorator adds url to app's URL map
 def hello_world():
