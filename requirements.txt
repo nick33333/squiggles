@@ -1,1 +1,4 @@
 flask
+numpy
+flask-bootstrap
+pandas
