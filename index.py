@@ -1,8 +1,15 @@
-from flask import Flask, render_template
-from flask import request
-from flask import make_response
-from flask import redirect
-
+from flask import (
+    Flask,
+    render_template,
+    request,
+    make_response,
+    redirect
+)
+# from flask.ext.bootstrap import Bootstrap
+from flask_bootstrap import Bootstrap
+import pickle
+import numpy as np
+# import pandas as pd
 '''
 To use flask shell:
 $ export FLASK_APP=index
@@ -10,6 +17,7 @@ $ flask shell
 '''
 
 app = Flask(__name__)
+bootstrap = Bootstrap(app)
 
 # # request obj
 # @app.route('/')
@@ -67,6 +75,11 @@ def user(name):
     '''
     return render_template('user.html', name=name)
 
+@app.errorhandler(404)
+def page_not_found(e):
+    # print(type(e)) # <class 'werkzeug.exceptions.NotFound'>
+    # print(e)
+    return render_template('404.html'), 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int("3000"), debug=True)
