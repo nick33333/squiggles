@@ -16,6 +16,9 @@ import pandas as pd
 from werkzeug.utils import secure_filename
 import os
 from tslearn.clustering import TimeSeriesKMeans
+import plotly
+import plotly.express as px
+import json
 
 '''
 To use flask shell:
@@ -28,7 +31,7 @@ UPLOAD_FOLDER = os.path.join('static', 'uploads')
 ALLOWED_EXTENSIONS = {'csv'}
 
 app = Flask(__name__)
-bootstrap = Bootstrap(app)
+# bootstrap = Bootstrap(app)
 
 app.secret_key = 'This is your secret key to utilize session in Flask'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -71,6 +74,7 @@ def index():
         f = request.files.get('file')
         # Extracting uploaded file name
         data_filename = secure_filename(f.filename)
+        session['fname'] = data_filename
         f.save(os.path.join(app.config['UPLOAD_FOLDER'],
                             data_filename))
         session['uploaded_data_file_path'] = os.path.join(app.config['UPLOAD_FOLDER'], data_filename)
@@ -85,7 +89,22 @@ def showData():
     uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')
     # Converting to html Table
     uploaded_df_html = uploaded_df.to_html()
-    return render_template('show_csv_data.html', data_var=uploaded_df_html)
+    
+    return render_template('show_csv_data.html', fname=session['fname'], data_var=uploaded_df_html)
+
+@app.route('/plot_data')
+def plotData():
+    # Uploaded File Path
+    data_file_path = session.get('uploaded_data_file_path', None)
+    # read csv
+    uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')
+    # Converting to html Table
+    fig = px.line(uploaded_df, x='time', y='NE', title='Muh plot')
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
+    
+    return render_template('plot_csv_data.html', fname=session['fname'],
+                           data_var=uploaded_df, graphJSON=graphJSON)
+
 
 @app.route('/user/<name>')
 def user(name):

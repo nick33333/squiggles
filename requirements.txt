@@ -8,3 +8,5 @@ scipy
 scikit-learn
 h5py
 werkzeug
+plotly
+
