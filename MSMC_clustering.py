@@ -10,6 +10,7 @@ from sklearn.metrics import pairwise_distances
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import KMeans
 from sklearn.cluster import FeatureAgglomeration
+from scipy import interpolate
 # from tslearn
 from tslearn.barycenters import dtw_barycenter_averaging
 from tslearn.barycenters import softdtw_barycenter
@@ -17,6 +18,16 @@ from tslearn.metrics import dtw
 from tslearn.metrics import soft_dtw
 from tslearn.clustering import KShape
 from tslearn.clustering import TimeSeriesKMeans
+
+
+def log10_with_zero(x):
+    '''
+    np.log10(0) kept returning -inf (probably for good reason), but it kept
+    being annoying so I asked chatGPT to make a log10 func to return 0 where
+    np.log10 returns -inf because one time point altered with this shouldn't
+    affect the clustering too bad I hope.
+    '''
+    return np.where(x == 0, 0, np.log10(x))
 
 
 def hierarchical_clustering(distance_matrix, method='complete'):
@@ -67,7 +78,7 @@ def label2seriesMatrix(MC, label):
 
 def max_pairwise_dists_of_cluster(MC):
     '''max_pairwise_dists_of_cluster
-    Finds the max pairwise distances observed in each cluster 
+    Finds the max pairwise distances observed in each cluster
     '''
     label_maxdists_lite = dict()
     label_maxdists = dict()
@@ -101,28 +112,124 @@ def seriesWindow(df, by, upperbound, lowerbound):
     Truncates pandas df to desired start and stop bounds by a designated
     field
     '''
-    # print(f'upperbound by {by}:',(df[by] < upperbound))
-    # print(f'lowerbound by {by}:',(df[by] > lowerbound))
     index = (df[by] < upperbound) & (df[by] > lowerbound)
-    # print(df)
-    # print(index)
     return df.loc[index]
 
 
-def windowMySeries(mySeries, **kwargs):
+def windowMySeries(mySeries, namesofMySeries, **kwargs):
     '''
     seriesWindow wrapper function.
-    
-    Takes in a list of time series dataframes and returns a truncated version 
-    of that list of time series dataframes. Truncation is performed with
-    seriesWindow function which takes in dataframes, a field to truncate by,
-    an upperbound on the field, and a lowerbound on the field.
+    Takes in a list of time series dataframes (and names list) and returns a
+    truncated version of that list of time series dataframes. Truncation is
+    performed with seriesWindow function which takes in dataframes, a field to
+    truncate by, an upperbound on the field, and a lowerbound on the field.
     '''
     windowedSeries = []
-    for df in mySeries:
-        windowedSeries.append(seriesWindow(df, **kwargs))
-    return windowedSeries
+    windowedNamesofMySeries = [] # We will want to select only the names of samples which aren't omitted by windowing.
+    for idx, df in enumerate(mySeries):
+        windowed_df = seriesWindow(df, **kwargs)
+        if len(windowed_df) > 0:  # If datapoints remain in df after windowing it by real time
+            windowedSeries.append(windowed_df) # Append windowed time series df
+            windowedNamesofMySeries.append(namesofMySeries[idx]) # Append name of windowed time series df
+    return windowedSeries, windowedNamesofMySeries
 
+
+def normalize_series_column(series_column: "pd.series") -> "pd.series":
+    '''
+    Normalize a pandas series_column (df or col) to [0, 1].
+    Handle case where all data may be 0
+    Kinda lame, but self.flat_curves this is the only reason
+    log10_scale_time_and_normalize_values and normalize_series_column are methods
+    '''
+    if len(series_column.unique()) == 1:
+        flat_curve = 1
+        return np.zeros(len(series_column)), flat_curve
+    else:
+        flat_curve = 0
+        return (series_column - series_column.min()) / (series_column.max() - series_column.min()), flat_curve
+
+
+def log10_scale_time_and_normalize_values(mySeries,
+                                          namesofMySeries,
+                                          use_time_log10_scaling,
+                                          use_value_normalization,
+                                          time_field,
+                                          value_field,
+                                          ):
+    '''
+    Transform time column into log10 scale [BAD]
+        - Due to use of DTW, using a log10 transform exponentially decreases
+          the difference (time) between data points as ts curve will be in terms
+          of magnitude rather than time
+        - Instead, maybe forget about log10 transform except when it comes to plotting
+    Don't 
+    and either
+    (1) Normalize lambda column to [0, 1]
+    (2) Divide lambda column by 1e4
+    '''
+    newMySeries = []
+    newNamesOfMySeries = []
+    flat_curves = 0
+    for idx, series in enumerate(mySeries):
+        if len(series[value_field]) == 1: # This is only kind of redundant so I'll keep it lol
+            flat_curve = 1
+        else:
+            flat_curve = 0
+        if use_time_log10_scaling:
+            series[time_field] = log10_with_zero(series[time_field])
+        if use_value_normalization:
+            series[value_field], flat_curve = normalize_series_column(series[value_field]) # Where flat_curve's redudancy shows
+        if flat_curve == 0:
+            newMySeries.append(series)
+            newNamesOfMySeries.append(namesofMySeries[idx])
+        flat_curves += flat_curve 
+    return newMySeries, newNamesOfMySeries, flat_curves
+
+
+def interpolate_series(series:"np.array",
+                       interpolation_pts:"int"=200,
+                       interpolation_kind:"str"="linear")->"np.array":
+    '''
+    Function interpolates time series with timestamped
+    values using scipy interp1d. Input series should
+    be 2D where the 1st dimension is the length of the
+    time series and the 2nd dimension is a time and value.
+    
+    ex: Series is of shape (60, 2). This indicates that
+    the series is 60 points long where each point is a
+    time and value.
+    
+    Input:
+    series = np.array([[0, 0.1], [1, 0.2], ... [59, 6.0] ])
+    series.shape = (60, 2)
+    
+    Output: Interpolating to 200 points using linear interp.
+    newseries = np.array([[0, 0.1], [1, 0.111], ... [200, 6.0] ])
+    series.shape = (200, 2)
+    '''
+    x = series[:, 0]
+    y = series[:, 1]
+    f = interpolate.interp1d(x, y, kind=interpolation_kind)
+    newx = np.linspace(x.min(), x.max(), interpolation_pts)
+    newy = f(newx)
+    newseries = np.column_stack((newx, newy))
+    return newseries
+
+def interpolate_series_list(series_list: "list[pd.DataFrame]",
+                            **interpolate_series_kwargs)->"list[pd.DataFrame]":
+    '''
+    Function Takes list of time series dataframes and returns 
+    a list of interpolated time series dataframes. This is used
+    in the last stage of Msmc_clustering.read_file().
+    '''
+    interpolated_series_list = []
+    for series in series_list:
+        tmp_series = series.to_numpy()
+        interpolated_series = interpolate_series(tmp_series, **interpolate_series_kwargs)
+        df = pd.DataFrame(interpolated_series, columns=series.columns)
+        interpolated_series_list.append(df)
+    return interpolated_series_list
+        
 
 class Msmc_clustering():
     '''
@@ -131,95 +238,94 @@ class Msmc_clustering():
     '''
     def __init__(self,
                  directory,
-                 friendly_note=True,
-                 mu=None,
+                 data_file_descriptor,
+                 mu=1,
                  generation_time_path=None,
-                 real_time=False,
-                 normalize_lambda=True,
-                 log_scale_time=False,
-                 plot_on_log_scale=False,
-                 uniform_ts_curve_domains=False,
                  to_omit=[],
                  exclude_subdirs=[],
-                 manual_cluster_count=False,
+                 manual_cluster_count=7,
                  algo="kmeans",
-                 suffix='.txt',
-                 omit_front_prior=0, 
+                 omit_front_prior=0,
                  omit_back_prior=0,
                  time_window=False,
-                 index_field="time_index",
                  time_field="left_time_boundary",
                  value_field="lambda",
-                 ignore_fields:"list<str>"=["right_time_boundary"],
+                 interpolation_pts=200,
+                 interpolation_kind='linear',
+                 use_interpolation=False,
+                 use_friendly_note=True,
+                 use_real_time_and_c_rate_transform=False,
+                 use_value_normalization=True,
+                 use_time_log10_scaling=False,
+                 use_plotting_on_log10_scale=False,  # Don't really need to touch unless you want to use Msmc_clustering in ipynb
                  **readfile_kwargs):
-        if friendly_note:
-            print(f"FRIENDLY NOTE if getting err while reading data for Msmc_clustering:\n \
-By default, Msmc_clustering reads data from directory: {directory} using pd.read_csv with default params.\n \
-MAKE SURE TO SPECIFY YOUR DESIRED sep. sep is read in through **readfile_kwargs and is a param\n \
-in pd.read_csv. pd.read_csv has sep=\',\' by default. If the data held in {directory} are .tsv\n \
-files, sep = \'\t\' \
-\n")
-        # #### ATTRIBUTES:
-        # ## DATA SETTINGS
         
+        if use_friendly_note:
+            print(f"FRIENDLY NOTE 1 if getting err while reading data for Msmc_clustering: \
+                    \nBy default, Msmc_clustering reads data from directory: <> using pd.read_csv with default params. \
+                    \nMAKE SURE TO SPECIFY YOUR DESIRED sep. sep is read in through **readfile_kwargs and is a param \
+                    \nin pd.read_csv. pd.read_csv has sep=\',\' by default. If the data held in <> are .tsv \
+                    \nfiles, <sep = \'\t\'>")
+            
+        # #### ATTRIBUTES:
+        # Bools
+        self.use_value_normalization = use_value_normalization  # Either normalize lambda or make lambda on log10 scale
+        self.use_real_time_and_c_rate_transform = use_real_time_and_c_rate_transform
+        self.use_plotting_on_log10_scale = use_plotting_on_log10_scale
+        self.use_time_log10_scaling = use_time_log10_scaling 
+        self.use_interpolation = use_interpolation
         # time_window should not be used if you want to cluster, this is meant for reading in data
         # time_window will almost always cause filter_data() to fail because of how non-uniform
         # the dataset will become.
         # TIME WINDOW SHOULD HAVE REAL YEAR VALUES, NOT LOG10 TRANSFORMED VALUES
-        self.time_window = time_window # Enter a list of len=2, where first item is lower bound and second item is upper bound on desired time window of data (time is likely on log10 scale depending on settings)
-        if self.time_window:
-            assert len(self.time_window) == 2, "time_window should be a list/tuple containing a lower and upper bound on the time window you desire"
-            self.lowerbound, self.upperbound = self.time_window
-        else:
+        # time_window should be a list/tuple containing a lower and upper bound on the time window you desire
+        # Data settings
+        self.time_window = time_window  # Enter a list of len=2, where first item is lower bound and second item is upper bound on desired time window of data (time is likely on log10 scale depending on settings)
+        if not self.time_window:
             self.lowerbound = False
             self.upperbound = False
-        self.index_field = index_field
+        elif len(self.time_window) == 2:
+            self.lowerbound, self.upperbound = self.time_window
+        self.interpolation_pts=interpolation_pts
+        self.interpolation_kind=interpolation_kind
         self.time_field = time_field
         self.value_field = value_field
-        self.ignore_fields = ignore_fields
         self.mu = mu  # Possible that files use different mutation rates
-        self.subdir_class_dict = {  # Helps to map mu to dir of data
-            "birds_part_1": "aves",
-            "birds_part_2": "aves",
-            "mammals_part_1": "mammals",
-            "Archive": "mammals"
-        }
-        self.class_mu_dict = {  # Maps taxonomical class to mu; GOOD FOR CLUSTERING WITH BIRDS AND MAMMALS WHICH HAVE DIFF MU's.
-            "aves": 1.4e-9,
-            "mammals": 2.2e-9
-        }
-        self.subdir2file_dict = {subdir: [] for subdir in self.subdir_class_dict.keys()} # GOOD FOR CLUSTERING WITH BIRDS AND MAMMALS WHICH HAVE DIFF MU's.
-        self.normalize_lambda = normalize_lambda  # Either normalize lambda or make lambda on log10 scale
-        self.real_time = real_time
-        self.gen_time_dict = self.read_gen_times(generation_time_path)  # keys are latin names delim by "_" instead of " "
-        if self.real_time:
-            self.plot_on_log_scale = True
-            self.log_scale_time = True
-        else:
-            self.plot_on_log_scale = plot_on_log_scale
-            self.log_scale_time = log_scale_time 
         self.to_omit = to_omit  # List of file names to omit
-        
-        self.suffix = suffix # This is meant for the read_file method... Pretty f'n screwy since its not an actual arg
+        self.data_file_descriptor = data_file_descriptor # This is meant for the read_file method... Pretty f'n screwy since its not an actual arg
         self.omit_front_prior = omit_front_prior # Omit time points before saving data to mySeries
         self.omit_back_prior = omit_back_prior
-        print(self.suffix, "type: ", type(self.suffix))
-        print(f"\nread_file summary:")
+        print(self.data_file_descriptor, "type: ", type(self.data_file_descriptor))
+        
+        print(f"\nREADING DATA")
+        print(f"read_file summary:")
         print(f"omit_front_prior={self.omit_front_prior}\nomit_back_prior={self.omit_back_prior}\n")
+        self.gen_time_dict = self.read_gen_times(generation_time_path)  # keys are latin names delim by "_" instead of " "
         tmp_data = self.read_file(directory,
-                                  real_time,
+                                  use_real_time_and_c_rate_transform,
                                   exclude_subdirs,
                                   **readfile_kwargs)
         self.mySeries, self.namesofMySeries, self.series_lengths, self.series_lengths_lists = tmp_data
+        # self.log10_scale_time_and_normalize_values()
+        if use_friendly_note:
+            print(f"\nFRIENDLY NOTE 2 if getting nothing in mySeries after reading data with Msmc_clustering: \
+                    \nDepending on the time_window you select, there may be no points in your input data which \
+                    \nfit into the time_window. Make sure time window is in real time (this means you need to set \
+                    \nuse_real_time_and_c_rate_transform = True)! Also, if using time_window, you probably won't be \
+                    \nable to cluster data just yet. You would want to dump windowed data from the mySeries attribute \
+                    \ninto a directory, interpolate the data in that directory so all files are of a uniform length, \
+                    \nand read real time processed data which has been interpolated with a new Msmc_clustering instance \
+                    \nwith use_real_time_and_c_rate_transform = False and maybe use_value_normalization=False and \
+                    \nuse_time_log10_scaling=False if data was processed with Msmc_clustering where use_value_normalization=True \
+                    \nand use_time_log10_scaling=True \
+                    \nex: time window for pleistocene to last glacial period might be something like: time_window = [1.17E4, 2.58E6]\n")
         self.lenMySeries = len(self.mySeries)
         self.name2series = dict()  # Dict important for mapping names to series, label,
         self.dtw_labels = None  # Will be list of labels for how curves are clustered
-        self.cluster_count = None
+        self.exhibitted_cluster_count = None
         self.clusterTable = None
         self.latin_names = None
         self.km = None
-        self.elbow_data = None
-        self.clustering_data = None  # From cleanSeries arrays used for clustering 
         self.label2barycenter = None  # Dict that is created when runing self.find_cluster_barycenters() after clustering
         self.flat_curves = 0  # Upon normalization, we shall find how many time series curves only have 1 unique y-value (flat)
         # ## CLUSTERING SETTINGS
@@ -227,20 +333,13 @@ files, sep = \'\t\' \
         self.algo = algo
         # ## INIT SOME STUFF
         if self.time_window == False:
-            self.filter_data(uniform_ts_curve_domains)
+            self.filter_data()
         else:
             print("we got a window")
             print('before:', len(self.mySeries))
-            self.filter_data(uniform_ts_curve_domains=False)
+            self.filter_data()
             print('after:', len(self.mySeries))
-        # print('before normalization')
-        # print(self.mySeries[9]['lambda'])
-        # print(self.mySeries[9]['lambda'].unique())
-        self.normalize()
-        # print('after normalization')
-        # print(self.mySeries[9]['lambda'])
-        self.seriesDict = {name: self.mySeries[idx] for idx, name in enumerate(self.namesofMySeries)}
-
+        self.name2series = {name: self.mySeries[idx] for idx, name in enumerate(self.namesofMySeries)}
         '''
         self.name2series:
         Important for mapping names to series. Particularly useful for grabbing
@@ -251,18 +350,18 @@ files, sep = \'\t\' \
         list_of_samples_of_label_1 = cluster_rt_norm_lenient.cluster_from_label(1)["Sample"]
         data_for_each_sample_of_label_1 = [self.name2series[name] for name in list_of_samples_of_label_1]
         '''
-        if self.real_time:
-            if self.normalize_lambda:
-                if self.plot_on_log_scale:
+        if self.use_real_time_and_c_rate_transform:
+            if self.use_value_normalization:
+                if self.use_plotting_on_log10_scale:
                     self.suptitle = 'Effective Population Size Time Series'
                     self.xlabel = "Real Time in Years (log10)"
                     self.ylabel = "Effective Population Size (Normalized to [0, 1])"
                 else:
                     self.suptitle = 'Effective Population Size Time Series Curves'
-                    self.xlabel = "Real Time in Years "
+                    self.xlabel = "Real Time in Years"
                     self.ylabel = "Effective Population Size (Normalized to [0, 1])"   
             else:
-                if self.plot_on_log_scale:
+                if self.use_plotting_on_log10_scale:
                     self.suptitle = 'Effective Population Size Time Series Curves'
                     self.xlabel = "Real Time in Years (log10)"
                     self.ylabel = "Effective Population Size (1E4)"
@@ -276,8 +375,16 @@ files, sep = \'\t\' \
             self.ylabel = f"Scaled Coalescence Rate ({self.value_field})"
 
     # #### METHODS
-    def read_file(self, directory, real_time, exclude_subdirs=[], window=False, **read_csv_kwargs):
+    def read_file(self, directory, use_real_time_and_c_rate_transform, exclude_subdirs=[], **read_csv_kwargs):
         '''
+        Data requirements:
+        - Must be delimited by tabs, commas, etc.
+        - Must have at least 2 columns (x and y or time point and value)
+        - 1st row must contain names/labels for each column
+        - All files should follow the same format
+            - Same file descriptors (data_file_descriptores like .tsv, .csv, .txt, etc.)
+            - Same headers/column names
+        
         POTENTIAL ISSUE: When given files with a number of fields that is different from 4 (Specifically the MSMC fields)
         or 2 (plain old x, y fields), we will get an issue (see hardcoding of 'right_time_boundary' and such on df's).
         Possible solution is to allow function to take in arguments specifying the possible fields and the ones which we
@@ -290,9 +397,9 @@ files, sep = \'\t\' \
 
         Input:
         1.) String of directory to read in. Should end with "/". 
-        2.) real_time: If True, converts data to real time and lambda to Ne
+        2.) use_real_time_and_c_rate_transform: If True, converts data to real time and lambda to Ne
         3.) pd.read_csv kwargs that aren't the filename
-        4.) suffix: file descriptor used. ex: .txt, .csv, .tsv
+        4.) data_file_descriptor: file descriptor used. ex: .txt, .csv, .tsv
 
         Outputs:
         1.) List of dataframes (series)
@@ -300,109 +407,70 @@ files, sep = \'\t\' \
         3.) Set of unique series lengths 
         4.) List of series lengths
         '''
-        suff = self.suffix
+        suff = self.data_file_descriptor
         mySeries = []
         namesofMySeries = []
         # print(self.to_omit)
         for subdir in os.listdir(directory):  # There is an assumption that each subdir has its own mu since each subdir has corresponded to a single tax-class
-            # Dependence of my on assumption that files in a subdir are of the same class can be circumvented if I just have a mapping between filenames and tax-classes
-            # print(subdir+"/")
-            if subdir not in exclude_subdirs:
-                if "." in subdir:  # Then we got a file!
-                    # print("We got a file")
-                    # print(namesofMySeries)
-                    filename = subdir
-                    # if filename.endswith(suff): # Check for correct suffix
-                    if suff == filename[-len(suff):]:  # Check for correct suffix
-                        if filename[:-len(suff)] not in self.to_omit:
-                            # print(directory+subdir+"/"+filename)
-                            df = pd.read_csv(directory + "/" + filename, **read_csv_kwargs)
-                            
-                            
-                            # ISSUE CODE BELOW! Might just feed usecols to kwargs
-                            if not self.time_field:  # We need to impute index and a fake right_time_boundary col
-                                impromptu_index = list(range(df.shape[0]))
-                                # print(impromptu_index)
-                                df.index = impromptu_index
-                            else:
-                                df.set_index(keys=[self.index_field], inplace=True)
-                                
-                            df = df.iloc[self.omit_front_prior:len(df)-self.omit_back_prior]  # Perform omission of points prior to saving in self.mySeries
-                            df.sort_index(inplace=True)
-                            # and lastly, ordered the data according to our date index
-                            # self.subdir2file_dict[subdir].append(filename)
-                            if real_time:  # If real time curves are desired, transform current df (Only use for MSMC/PSMC formatted data)
-                                # mu = self.class_mu_dict[self.subdir_class_dict[subdir]]  # GOOD FOR CLUSTERING WITH BIRDS AND MAMMALS WHICH HAVE DIFF MU's. Index into my convoluted ass dictionaries to get mu's for subsets of data
-                                mu = self.mu # How things originally were when I was converting curves from only aves from B10K
-                                # Convert scaled time to real time
-                                df[self.time_field] = df[self.time_field] / mu  # Convert to generations
-                                for key in self.gen_time_dict.keys():  # Step can be improved if keys list is sorted
-                                    if key in filename:
-                                        generation_time = self.gen_time_dict[key]
-                                        df[self.time_field] = df[self.time_field] * generation_time
-                                # print(df)
-                                # # [OLD LOCATION FOR MINMAX NORM] Convert Coalescence Rate to Ne
-                                df[self.value_field] = 1 / df[self.value_field]  # Take inverse of coalescence rate
-                                df[self.value_field] = df[self.value_field] / (2 * mu)
-                            # Drop ignored fields
-                            if self.ignore_fields and len(self.ignore_fields) > 0:
-                                assert all(field in df.columns for field in self.ignore_fields), "Not all fields are in df.columns. Check ignore_fields"
-                                df = df.drop(self.ignore_fields, axis=1)
-                            mySeries.append(df)
-                            namesofMySeries.append(filename[:-len(suff)])
-                    else:
-                        print(f"self.suffix: {self.suffix} does not match suffix of {filename} {filename[-len(suff):]}")
-                else:
-                    # print("We got a directory")
-                    for filename in os.listdir(directory + subdir + "/"):  # depending on filename's taxanomical class, mu may vary
-                        if suff == filename[-len(suff):]:
-                        # if filename.endswith(suff):  # Check for correct file suffix
-                            if filename[:-len(suff)] not in self.to_omit:
-                                df = pd.read_csv(directory + subdir + "/" + filename, **read_csv_kwargs)
-                                # Create index of df
-                                if not self.time_field:  # We need to impute index and a fake right_time_boundary col
-                                    impromptu_index = list(range(df.shape[0]))
-                                    df.index = impromptu_index
-                                else:
-                                    df.set_index(keys=[self.index_field], inplace=True)
-                                df = df.iloc[self.omit_front_prior:len(df)-self.omit_back_prior]  # Perform omission of points prior to saving in self.mySeries
-                                df.sort_index(inplace=True)
-                                self.subdir2file_dict[subdir].append(filename) # GOOD FOR CLUSTERING WITH BIRDS AND MAMMALS WHICH HAVE DIFF MU's.
-                                if real_time:  # If real time curves are desired, transform current df
-                                    mu = self.class_mu_dict[self.subdir_class_dict[subdir]]  # Index into my convoluted ass dictionaries to get mu's for subsets of data
-                                    # Convert scaled time to real time
-                                    df[self.time_field] = df[self.time_field] / mu  # Convert to generations
-                                    for key in self.gen_time_dict.keys():  # Step can be improved if keys list is sorted
-                                        if key in filename:
-                                            generation_time = self.gen_time_dict[key]
-                                            df[self.time_field] = df[self.time_field] * generation_time
-                                    # Convert Coalescence Rate to Ne
-                                    df[self.value_field] = 1 / df[self.value_field]  # Take inverse of coalescence rate
-                                    df[self.value_field] = df[self.value_field] / (2 * mu)
-                                # Drop ignored fields
-                                if self.ignore_fields and len(self.ignore_fields) > 0:
-                                    assert all(field in df.columns for field in self.ignore_fields), "Not all fields are in df.columns. Check ignore_fields"
-                                    df = df.drop(self.ignore_fields, axis=1)
-                                mySeries.append(df)
-                                namesofMySeries.append(filename[:-len(suff)])
-                        else:
-                            print(f"self.suffix: {self.suffix} does not match suffix of {filename} {filename[-len(suff):]}")
+            if subdir not in exclude_subdirs and suff == subdir[-len(suff):]: # If specified file data_file_descriptor matches, assume file
+                filename = subdir  # Renamed subdir to filename for clarity
+                if filename[:-len(suff)] not in self.to_omit: # If data isn't to be omitted
+                    df = pd.read_csv(directory + "/" + filename, usecols=[self.time_field, self.value_field], **read_csv_kwargs)
+                    
+                    df = df.iloc[self.omit_front_prior:len(df)-self.omit_back_prior]  # Perform omission of points prior to saving in self.mySeries
+                    
+                    if use_real_time_and_c_rate_transform:  # If real time curves are desired, transform current df (Only use for MSMC/PSMC formatted data)
+                        # Convert scaled time to real time
+                        df[self.time_field] = df[self.time_field] / self.mu  # Convert scaled time to generations
+                        for key in self.gen_time_dict.keys():  # Step can be improved if keys list is sorted
+                            if key in filename:
+                                generation_time = self.gen_time_dict[key]
+                                df[self.time_field] = df[self.time_field] * generation_time # Convert generations to real time
+                        # print(df)
+                        df[self.value_field] = 1 / df[self.value_field]  # Take inverse of coalescence rate
+                        df[self.value_field] = df[self.value_field] / (2 * self.mu)
+                    mySeries.append(df)
+                    namesofMySeries.append(filename[:-len(suff)])
         # HERE MIGHT BE GOOD TO WINDOW OFF DATA
         if self.time_window:
             # print('len of my series before windowing:', len(mySeries))
-            mySeries = windowMySeries(mySeries=mySeries,
-                                      by=self.time_field,
-                                      upperbound=self.upperbound,
-                                      lowerbound=self.lowerbound)
-            # print('len of my series after windowing:', len(mySeries))
+            mySeries, namesofMySeries = windowMySeries(mySeries=mySeries,
+                                                       namesofMySeries=namesofMySeries,
+                                                       by=self.time_field,
+                                                       upperbound=self.upperbound,
+                                                       lowerbound=self.lowerbound)
+            print('len of my series after windowing:', len(mySeries))
+        if self.use_time_log10_scaling or self.use_value_normalization: # Performed after windowing so we can window in real time if performing transforms
+            mySeries, namesofMySeries, self.flat_curves = log10_scale_time_and_normalize_values(mySeries= mySeries,
+                                                                                                namesofMySeries=namesofMySeries,
+                                                                                                use_time_log10_scaling=self.use_time_log10_scaling,
+                                                                                                use_value_normalization=self.use_value_normalization,
+                                                                                                time_field=self.time_field,
+                                                                                                value_field=self.value_field)
+
+        if self.use_interpolation:
+            mySeries = interpolate_series_list(mySeries,
+                                               interpolation_pts=self.interpolation_pts,
+                                               interpolation_kind=self.interpolation_kind)
+
         series_lengths = {len(series) for series in mySeries}  # Compile unique Series lengths
         series_lengths_list = [len(series) for series in mySeries]  # Compile unique Series length
         # print(series_lengths)
         # print(series_lengths_list)
+        
+            
         return mySeries, namesofMySeries, series_lengths, series_lengths_list
 
     def read_gen_times(self, directory: "str") -> "dict":
         '''
+        Note: Pretty old method, hasn't really been proofed like most other
+        methods, but it works.
+        
+        Makes a dict where the scientific names of species are the keys and their
+        corresponding generation lengths are the values. This method takes a
+        path to a directory containing files (tab separated) where each row 
+        contains 1.) scientific name and 2.) generation length.
+        
         Possibly better to read generation times data after reading in MSMC curves
         whenever number taxa generation times > ts curves available
 
@@ -438,8 +506,11 @@ files, sep = \'\t\' \
         else:
             return None
 
-    def filter_data(self, uniform_ts_curve_domains=False):
+    def filter_data(self):
         '''
+        filters out time points == 0 (logically we only have 1 value per time
+        point so the most points which can be 0 should be 1)
+        
         First part takes in a group of series and scales their time ranges to
         the series with the oldest date.
 
@@ -452,76 +523,26 @@ files, sep = \'\t\' \
         # if scaled_to_real: # Scale data to real time and eff. pop. sizes
 
         # Only use series' of the longest known length
-        max_series_len = max(self.series_lengths)
-        newMySeries = []
-        newNamesOfMySeries = []
-        for idx, series in enumerate(self.mySeries):
-            if len(series) == max_series_len or self.time_window: # "or self.time_window" is included in condition for enabling the reading of time window'd data
-                # print(self.time_field)
-                # print(series)
-                if series[self.time_field].iloc[0] == 0:  # If 1st time entry is 0
-                    # print(f"len of trimmed df: {len(series.iloc[1:])}")
-                    newMySeries.append(series.iloc[1:])  # Clip off 1st entry to avoid -inf err when scaling to log10 scale in normalize()
-                    # Entry at 0th and 1st idx are identical for lambda so no meaningful info should be lost
-                else:
+        if len(self.series_lengths) > 0:  
+            max_series_len = max(self.series_lengths)
+            newMySeries = []
+            newNamesOfMySeries = []
+            for idx, series in enumerate(self.mySeries):
+                if len(series) == max_series_len or self.time_window: # "or self.time_window" is included in condition for enabling the reading of time window'd data
+                    # print("filter_data")
+                    # print(self.time_field)
+                    # print(series)
+                    # if series[self.time_field].iloc[0] == 0:  # If 1st time entry is 0
+                    #     # print(f"len of trimmed df: {len(series.iloc[1:])}")
+                    #     newMySeries.append(series.iloc[1:])  # Clip off 1st entry to avoid -inf err when scaling to log10 scale in log10_scale_time_and_normalize_values()
+                    #     # Entry at 0th and 1st idx are identical for lambda so no meaningful info should be lost
+                    # else:
                     newMySeries.append(series)
-                newNamesOfMySeries.append(self.namesofMySeries[idx])
-        self.mySeries = newMySeries
-        self.namesofMySeries = newNamesOfMySeries
+                    newNamesOfMySeries.append(self.namesofMySeries[idx])
+            self.mySeries = newMySeries
+            self.namesofMySeries = newNamesOfMySeries
 
-        # Find largest final time plotted among series
-        # Make sure all series' are on the range of the series of the largest size (biggest final time recorded on X-axis)
-        # This should be fine since all times boundaries are implied to end on inf anyways (found in original data)
-
-        if uniform_ts_curve_domains:
-            ts_beginning_time = {series[self.time_field].max() for series in self.mySeries} # units in terms of max(series) (Time)
-            ts_beginning_time = max(ts_beginning_time)
-            to_extend_idxs = [] # Record series' which had final recorded times less that biggest final time
-            for i in range(len(self.mySeries)):
-                if max(self.mySeries[i]) != ts_beginning_time: # If series doesn't extend to oldest time series beginning time
-                    to_extend_idxs.append(i)
-            for idx in to_extend_idxs: # Scale time boundaries of each series to the oldest known one in all data
-                self.mySeries[idx][self.time_field].iloc[-1] = ts_beginning_time
-                
-        for idx, name in enumerate(self.namesofMySeries):
-            self.name2series[name] = self.mySeries[idx]
-
-    def normalize_series(self, series: "pd.series") -> "pd.series":
-        '''
-        Normalize a pandas series (df or col) to [0, 1].
-        Handle case where all data may be 0
-        '''
-        # print("Normalizing")
-        # print(series.unique())
-        # print(series.unique()[0])
-        if len(series.unique()) == 1:
-            self.flat_curves += 1
-            return np.zeros(len(series))
-        else:
-            return (series - series.min()) / (series.max() - series.min())
-
-    def normalize(self):
-        '''
-        Transform time column into log10 scale [BAD]
-            - Due to use of DTW, using a log10 transform exponentially decreases
-              the difference (time) between data points as ts curve will be in terms
-              of magnitude rather than time
-            - Instead, maybe forget about log10 transform except when it comes to plotting
-        Don't 
-        and either
-        (1) Normalize lambda column to [0, 1]
-        (2) Divide lambda column by 1e4
-        '''
-        for idx in range(len(self.mySeries)):
-            if self.log_scale_time:
-                self.plot_on_log_scale = True
-                self.mySeries[idx][self.time_field] = np.log10(self.mySeries[idx][self.time_field])
-            if self.normalize_lambda:
-                self.mySeries[idx][self.value_field] = self.normalize_series(self.mySeries[idx][self.value_field])
-            else:
-                pass
-
-    def plot_series(self, num_to_plot=None, cols=5, fs_x=50, fs_y=25):
+    def plot_series(self, num_to_plot=None, cols=5, fs_x=50, fs_y=25, **step_kwargs):
         '''
         Plots curves for mySeries dfs as they are in current object. By default
         mySeries dfs may only be in terms of Scaled time and Coalescence Rate
@@ -547,65 +568,12 @@ files, sep = \'\t\' \
                 curr = self.mySeries[i*cols+j]
                 x_list = curr[self.time_field].to_numpy()
                 y_list = curr[self.value_field].to_numpy()
-                axs[i, j].step(x_list, y_list, 'g-', where="pre")
+                axs[i, j].step(x_list, y_list, 'g-', where="pre", **step_kwargs)
                 axs[i, j].set_title(self.namesofMySeries[i*cols+j])
                 axs[i, j].set_xlabel(self.xlabel)  # time
                 axs[i, j].set_ylabel(self.ylabel)  # size
         fig.patch.set_facecolor('white')  # Changes background to white
         plt.show()
-
-    def elbow_method(self, random_state=205, gamma=None, save_name="cluster-related-figures/elbow-method-plot.png", plot=False, low=2, high=20, save_to=None):
-        '''
-
-        Usage ex: 
-        save_to = "MSMC-Exploratory-Analysis/results/figures/"
-        instance.elbow_method(save_to=save_to)
-        '''
-        fig = plt.figure()
-        plt.suptitle(f"gamma = {gamma}")
-        elbow_data = []
-        cleanSeries = [series for series in self.mySeries]
-        for n_clusters in range (low, high+1):
-            if not gamma is None:
-                print(f"soft-DTW gamma = {gamma}")
-                if self.algo == "kmeans":
-                    print(f"gamma = {gamma}")
-                    km = TimeSeriesKMeans(n_clusters=n_clusters, verbose=False, 
-                                          metric="softdtw", 
-                                          metric_params={"gamma": gamma}, 
-                                          dtw_inertia=True, 
-                                          random_state=random_state)
-                elif self.algo == "kshapes":
-                    km = KShape(n_clusters=n_clusters, verbose=False, 
-                                random_state=random_state) 
-                else:
-                    km = TimeSeriesKMeans(n_clusters=n_clusters, verbose=False, 
-                                          metric="softdtw", 
-                                          metric_params={"gamma": gamma}, 
-                                          dtw_inertia=True, 
-                                          random_state=random_state)
-            else:
-                print("DTW")
-                if self.algo == "kmeans":
-                    km = TimeSeriesKMeans(n_clusters=n_clusters, verbose=False, 
-                                          metric="dtw", dtw_inertia=True, 
-                                          random_state=random_state)
-                elif self.algo == "kshapes":
-                    km = KShape(n_clusters=n_clusters, verbose=False, 
-                                random_state=random_state) 
-                else:
-                    km = TimeSeriesKMeans(n_clusters=n_clusters, verbose=False, 
-                                          metric="dtw", dtw_inertia=True, 
-                                          random_state=random_state)
-            y_pred = km.fit_predict(cleanSeries)
-            elbow_data.append((n_clusters, km.inertia_))
-        ax = pd.DataFrame(elbow_data, columns=['clusters', 'distance']).plot(x='clusters', y='distance')
-        self.elbow_data = elbow_data
-        ax.set_ylabel("Distortion in Sum of squared distances (Inertia)")
-        if save_to:
-            plt.savefig(save_to + save_name, dpi=300)
-        plt.show()
-        return
 
     def compute_cluster_barycenter(self, label: "int", iter: "int" = 5, gamma=None, **barycenter_averaging_kwargs):
         '''
@@ -647,7 +615,15 @@ files, sep = \'\t\' \
                        plot_barycenters=True,
                        **kwargs):
         '''
-        Func clusters using DBSCAN algorithm with DTW distance
+        If using Kmeans (main algo used), all data entries (items in mySeries)
+        must be of the same length. Training won't work otherwise. Training
+        on data where time_window=False should be fine for training if you follow
+        the assumptions for Msmc_clustering data. If you entered a time_window,
+        clustering will likely end in failure. To cluster windowed data, interpolate
+        the data which you just windowed to and equal number of data points like 
+        50, 100, 200, etc.
+        
+        DBSCAN notes:
 
         eps: The maximum distance between two samples for one to be considered 
         as in the neighborhood of the other. This is not a maximum bound on the 
@@ -783,7 +759,6 @@ files, sep = \'\t\' \
             data = {"Sample": self.namesofMySeries, "Labels": self.dtw_labels}
         self.clusterTable = pd.DataFrame.from_dict(data, orient="columns")
         self.add_latin_to_cluster()
-        self.clustering_data = cleanSeries_with_df
         # for idx, name in enumerate(self.namesofMySeries):
         #     self.name2series[name] = self.mySeries[idx]
         # Compute some cluster barycenters
@@ -791,7 +766,7 @@ files, sep = \'\t\' \
         self.label2barycenter = self.find_cluster_barycenters(iter, gamma)
         # Plots curves within their assigned clusters
         if plot_everything:
-            self.cluster_count = len(set(self.dtw_labels))
+            self.exhibitted_cluster_count = len(set(self.dtw_labels))
             self.plot_curve_clusters(cleanSeries_with_df, cols, fs_x, fs_y,
                                      save_to=save_to,
                                      metric_params=metric_params,
@@ -804,11 +779,31 @@ files, sep = \'\t\' \
             print("DID I CLOSE THE PLOT??? PLEASE TELL ME I DID!")
             plt.close()
 
+    def to_training_data(self):
+        '''
+        Method returns time series as an 3 dimensional tensor. 1st dimension
+        corresponds to samples/entries. 2nd dimension corresponds to the length of
+        an entry. 3rd dimension corresponds to actual time point and value in a
+        segment of the time series.
+
+        Note: If you want the names corresponding to each sample in the output,
+        access the namesofmySeries attribute for a list of names corresponding
+        to each sample.
+
+        ex: to_training_data returns data of the shape (100, 60, 2). There are
+        100 samples in this dataset. Each sample has a time series of length
+        60. Each "point" in the time series has 2 fields which are usually a
+        specific timestamp and a value. In terms of the MSMC the time stamp is
+        time in the past and the value is NE.
+        '''
+        X = np.array([i.to_numpy() for i in self.mySeries])
+        return X
+
     def plot_curve_clusters(self,
                             cleanSeries,
                             cols=3,
-                            fs_x=25,
-                            fs_y=50,
+                            fs_x=50,
+                            fs_y=25,
                             save_to=None,
                             iter=5,
                             metric_params={"gamma": None},
@@ -826,8 +821,8 @@ files, sep = \'\t\' \
         Light Grey region is Pleistocene
         '''
         # Necessary for plotting figure subplots (square shape), nothing else
-        # plot_count = math.ceil(math.sqrt(self.cluster_count))
-        num_to_plot = self.cluster_count  # Set no. plots to num clusters
+        # plot_count = math.ceil(math.sqrt(self.exhibitted_cluster_count))
+        num_to_plot = self.exhibitted_cluster_count  # Set no. plots to num clusters
         print(f"num to plot : {num_to_plot}")
         if num_to_plot % cols == 0:
             rows = (num_to_plot//cols)
@@ -838,9 +833,9 @@ files, sep = \'\t\' \
         if self.algo == "kmeans":
             if metric_params["gamma"] is None:
                 fig.suptitle(f'DTW Clusters of {self.suptitle}\n \
-                             K = {self.cluster_count}')
+                             K = {self.exhibitted_cluster_count}')
             else:
-                fig.suptitle(f'soft-DTW Clusters of {self.suptitle}\n{metric_params}, K = {self.cluster_count}')
+                fig.suptitle(f'soft-DTW Clusters of {self.suptitle}\n{metric_params}, K = {self.exhibitted_cluster_count}')
         else:
             fig.suptitle(f'{self.algo} Clusters of {self.suptitle}')
         plt.rcParams["figure.facecolor"] = 'white'
@@ -853,22 +848,15 @@ files, sep = \'\t\' \
             y_cluster = []
             for i in range(len(self.dtw_labels)): # For each curve's label
                     if self.dtw_labels[i]==label: # match it to the current unique/possible label focused on
-                        if self.plot_on_log_scale and not self.log_scale_time:
-                            x = np.log10(cleanSeries[i][self.time_field].to_numpy()) # Index mySeries for df
+                        if self.use_plotting_on_log10_scale and not self.use_time_log10_scaling:
+                            x = log10_with_zero(cleanSeries[i][self.time_field].to_numpy()) # Index mySeries for df
                         else:
                             x = cleanSeries[i][self.time_field].to_numpy()
                         y = cleanSeries[i][self.value_field].to_numpy()
 
 
                         # Curve color assignment
-                        if self.namesofMySeries[i]+".txt" in self.subdir2file_dict["Archive"]: # Color Archive files differently (mammals)
-                            reg_curve_color = "green" 
-                        elif self.namesofMySeries[i]+".txt" in self.subdir2file_dict["birds_part_2"]:
-                            reg_curve_color = "gray" 
-                        elif self.namesofMySeries[i]+".txt" in self.subdir2file_dict["birds_part_1"]:
-                            reg_curve_color = "gray" 
-                        else:
-                            reg_curve_color = "gray" 
+                        reg_curve_color = "gray" 
 
                         if rows == 1: # If axs only takes 1D indices
                             axs[column_j].step(x, y, "+-", c=reg_curve_color, alpha=0.4)
@@ -902,7 +890,7 @@ files, sep = \'\t\' \
                     axs[column_j].set_title("Cluster "+ str(column_j + (row_i*cols)) )
                     axs[column_j].set_xlabel(self.xlabel)
                     axs[column_j].set_ylabel(self.ylabel)
-                    if self.real_time and plot_iceages:  # Here is where to edit for differentiating curves by color
+                    if self.use_real_time_and_c_rate_transform and plot_iceages:  # Here is where to edit for differentiating curves by color
                         axs[column_j].axvspan(4, 5, alpha=0.5, color='grey')
                         axs[column_j].axvspan(5, 6.3, alpha=0.25, color='grey')
                         # axs[column_j].set_xlim(4, 7.5)
@@ -924,7 +912,7 @@ files, sep = \'\t\' \
                     axs[row_i, column_j].set_title("Cluster "+ str(column_j + (row_i*cols)) )
                     axs[row_i, column_j].set_xlabel(self.xlabel)
                     axs[row_i, column_j].set_ylabel(self.ylabel)
-                    if self.real_time and plot_iceages:
+                    if self.use_real_time_and_c_rate_transform and plot_iceages:
                         axs[row_i, column_j].axvspan(4, 5, alpha=0.5, color='grey')
                         axs[row_i, column_j].axvspan(5, 6.3, alpha=0.25, color='grey')
                         # axs[row_i, column_j].set_xlim(4, 7.5)
@@ -942,8 +930,8 @@ files, sep = \'\t\' \
         Plots histogram to illustrate distribution of curves among the clusters 
         created with dtw
         '''
-        cluster_c = [len(self.dtw_labels[self.dtw_labels==i]) for i in range(self.cluster_count)]
-        cluster_n = ["Cluster "+str(i) for i in range(self.cluster_count)]
+        cluster_c = [len(self.dtw_labels[self.dtw_labels==i]) for i in range(self.exhibitted_cluster_count)]
+        cluster_n = ["Cluster "+str(i) for i in range(self.exhibitted_cluster_count)]
         plt.figure(figsize=(15,5))
         plt.title(f"Cluster Distribution for {self.algo}")
         plt.bar(cluster_n,cluster_c)
@@ -952,7 +940,7 @@ files, sep = \'\t\' \
         plt.show()
 
 
-    def plot_curve(self, name=None, df = None, dir = None, dups=0, stretch=0, err=0, thresh_min=None, thresh_max=None, winStart=None, winEnd=None, fs_x=10, fs_y=10, xlim_start=None, xlim_end=None, ylim_start=None, ylim_end=None,  save_to = None, additional_info=None, plot_on_log_scale=True):
+    def plot_curve(self, name=None, df = None, dir = None, dups=0, stretch=0, err=0, thresh_min=None, thresh_max=None, winStart=None, winEnd=None, fs_x=10, fs_y=10, xlim_start=None, xlim_end=None, ylim_start=None, ylim_end=None,  save_to = None, additional_info=None, use_plotting_on_log10_scale=True):
         '''
         Plots series curve given name, df, or dir of series
         Option to save plot to a directory
@@ -980,11 +968,11 @@ files, sep = \'\t\' \
         else:
             series = df
 
-        if plot_on_log_scale and not self.log_scale_time:
-            x = np.log10(series[self.time_field].to_numpy()) # Index mySeries for df
+        if use_plotting_on_log10_scale and not self.use_time_log10_scaling:
+            x = log10_with_zero(series[self.time_field].to_numpy()) # Index mySeries for df
             # if winStart and winEnd:
-            #     winStart = np.log10(winStart)
-            #     winEnd = np.log10(winEnd)
+            #     winStart = log10_with_zero(winStart)
+            #     winEnd = log10_with_zero(winEnd)
         else:
             x = series[self.time_field].to_numpy()
         y = series[self.value_field].to_numpy()
