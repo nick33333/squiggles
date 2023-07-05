@@ -1,0 +1,3 @@
+[submodule "MSMC_clustering"]
+	path = MSMC_clustering
+	url = git@github.com:nick33333/MSMC_clustering.git

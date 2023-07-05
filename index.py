@@ -19,7 +19,9 @@ from tslearn.clustering import TimeSeriesKMeans
 import plotly
 import plotly.express as px
 import json
-
+os.chdir("MSMC_clustering")
+from MSMC_clustering import Msmc_clustering
+os.chdir("../")
 '''
 To use flask shell:
 $ export FLASK_APP=index
