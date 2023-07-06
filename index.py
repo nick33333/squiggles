@@ -105,6 +105,8 @@ def plotData():
 @app.route('/plot_clusters')
 def plotClusters():
     # Read dataset
+    
+    # CURRENTLY WORKING ON HOW TO READ FREAKING FORM DATA
     form_data = request.form
     # Make plotly subplot
     
