@@ -4,16 +4,23 @@
     <title>Uploading & Reading CSV file</title> 
 </head> 
 <body> 
-    <form method = "POST" enctype="multipart/form-data" action = "/index">   
+    <form method = "POST" enctype="multipart/form-data" action = "/">   
         <input type="file" name="file" accept=".csv">
+        {% for Msmc_clustering_arg in Msmc_clustering_args %}
+        <p>{{Msmc_clustering_arg}}<input type = "text" name = "{{Msmc_clustering_arg}}" /></p>
+        {% endfor%}
         <input type = "submit" value="Upload"> 
     </form>
     <p style="color:blue;">Choose csv file to upload</p>
+
     <form action="/show_data" target="_blank">
         <input type="submit" value="Show CSV"/>
     </form>
     <form action="/plot_data" target="_blank">
         <input type="submit" value="Plot CSV"/>
+    </form>
+    <form action="/plot_clusters" target="_blank">
+        <input type="submit" value="Plot Clusters"/>
     </form>
 </body> 
 </html>

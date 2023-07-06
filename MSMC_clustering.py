@@ -238,7 +238,6 @@ class Msmc_clustering():
     '''
     def __init__(self,
                  directory,
-                 data_file_descriptor,
                  mu=1,
                  generation_time_path=None,
                  to_omit=[],
@@ -258,6 +257,7 @@ class Msmc_clustering():
                  use_value_normalization=True,
                  use_time_log10_scaling=False,
                  use_plotting_on_log10_scale=False,  # Don't really need to touch unless you want to use Msmc_clustering in ipynb
+                 data_file_descriptor=None,
                  **readfile_kwargs):
         
         if use_friendly_note:
@@ -407,16 +407,14 @@ class Msmc_clustering():
         3.) Set of unique series lengths 
         4.) List of series lengths
         '''
-        suff = self.data_file_descriptor
         mySeries = []
         namesofMySeries = []
         # print(self.to_omit)
         for subdir in os.listdir(directory):  # There is an assumption that each subdir has its own mu since each subdir has corresponded to a single tax-class
-            if subdir not in exclude_subdirs and suff == subdir[-len(suff):]: # If specified file data_file_descriptor matches, assume file
+            if subdir not in exclude_subdirs: # If specified file data_file_descriptor matches, assume file
                 filename = subdir  # Renamed subdir to filename for clarity
-                if filename[:-len(suff)] not in self.to_omit: # If data isn't to be omitted
+                if filename not in self.to_omit: # If data isn't to be omitted
                     df = pd.read_csv(directory + "/" + filename, usecols=[self.time_field, self.value_field], **read_csv_kwargs)
-                    
                     df = df.iloc[self.omit_front_prior:len(df)-self.omit_back_prior]  # Perform omission of points prior to saving in self.mySeries
                     
                     if use_real_time_and_c_rate_transform:  # If real time curves are desired, transform current df (Only use for MSMC/PSMC formatted data)
@@ -430,7 +428,9 @@ class Msmc_clustering():
                         df[self.value_field] = 1 / df[self.value_field]  # Take inverse of coalescence rate
                         df[self.value_field] = df[self.value_field] / (2 * self.mu)
                     mySeries.append(df)
-                    namesofMySeries.append(filename[:-len(suff)])
+                    rev_cut = filename[::-1].index('.')
+                    name = filename[::-1][rev_cut:][::-1]
+                    namesofMySeries.append(name)
         # HERE MIGHT BE GOOD TO WINDOW OFF DATA
         if self.time_window:
             # print('len of my series before windowing:', len(mySeries))

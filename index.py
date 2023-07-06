@@ -33,7 +33,7 @@ UPLOAD_FOLDER = os.path.join('static', 'uploads')
 ALLOWED_EXTENSIONS = {'csv'}
 
 app = Flask(__name__)
-# bootstrap = Bootstrap(app)
+bootstrap = Bootstrap(app)
 
 app.secret_key = 'This is your secret key to utilize session in Flask'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -49,28 +49,19 @@ km_dict[app.config['k']] = TimeSeriesKMeans.from_pickle(f"models/{app.config['an
 # My testing model
 app.config[f"k{app.config['k']}"] = km_dict[app.config['k']] # Should be a tslearn TimeSeriesKMeans obj
 
-@app.route("/") # app.route decorator adds url to app's URL map
-def hello_world():
-    '''
-    URL map works by mapping URLs to view functions
-    ex:
-    >>> from index import app
-    >>> app.url_map
-    >>> app.url_map
-    Map([<Rule '/' (HEAD, OPTIONS, GET) -> hello_world>,
-    <Rule '/static/<filename>' (HEAD, OPTIONS, GET) -> static>,
-    <Rule '/<name>' (HEAD, OPTIONS, GET) -> user>])
-    >>>
-    '''
-    print('request:')
-    print(request)
-    print(request.files)
-    print(session)
-    return "<p>Hello, World!</p>"
-
-
-@app.route('/index', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST'])
 def index():
+    barred_args = ['self',
+                   'data_file_descriptor',
+                   'directory',
+                   'generation_time_path',
+                   'to_omit',
+                   'exclude_subdirs',
+                   'time_field',
+                   'value_field',
+                   'use_friendly_note']
+    Msmc_clustering_args = Msmc_clustering.__init__.__code__.co_varnames
+    Msmc_clustering_args = [i for i in Msmc_clustering_args if i not in barred_args]
     if request.method == 'POST':
         # upload file flask
         f = request.files.get('file')
@@ -80,8 +71,8 @@ def index():
         f.save(os.path.join(app.config['UPLOAD_FOLDER'],
                             data_filename))
         session['uploaded_data_file_path'] = os.path.join(app.config['UPLOAD_FOLDER'], data_filename)
-        return render_template('index2.html')
-    return render_template("index.html")
+        return render_template('index2.html', Msmc_clustering_args=Msmc_clustering_args)
+    return render_template("index.html", Msmc_clustering_args=Msmc_clustering_args)
 
 @app.route('/show_data')
 def showData():
@@ -96,16 +87,37 @@ def showData():
 
 @app.route('/plot_data')
 def plotData():
-    # Uploaded File Path
+    # Read dataset
+    form_data = request.form
+    print(form_data)
+    # Make plotly subplot
+    
+    # Read from Uploaded File Path
     data_file_path = session.get('uploaded_data_file_path', None)
     # read csv
     uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')
-    # Converting to html Table
     fig = px.line(uploaded_df, x='time', y='NE', title='Muh plot')
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
     
     return render_template('plot_csv_data.html', fname=session['fname'],
                            data_var=uploaded_df, graphJSON=graphJSON)
+
+@app.route('/plot_clusters')
+def plotClusters():
+    # Read dataset
+    form_data = request.form
+    # Make plotly subplot
+    
+    # Read from Uploaded File Path
+    data_file_path = session.get('uploaded_data_file_path', None)
+    # read csv
+    uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')
+    fig = px.line(uploaded_df, x='time', y='NE', title='Muh plot')
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
+    
+    return render_template('plot_csv_data.html', fname=session['fname'],
+                           data_var=uploaded_df, graphJSON=graphJSON)
+
 
 
 @app.route('/user/<name>')
