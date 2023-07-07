@@ -1,3 +1,4 @@
+import sys
 from flask import (
     Flask,
     render_template,
@@ -19,9 +20,11 @@ from tslearn.clustering import TimeSeriesKMeans
 import plotly
 import plotly.express as px
 import json
-os.chdir("MSMC_clustering")
+
+sys.path.insert(1, 'MSMC_clustering/')
 from MSMC_clustering import Msmc_clustering
-os.chdir("../")
+from MSMC_plotting import *
+
 '''
 To use flask shell:
 $ export FLASK_APP=index
@@ -49,16 +52,14 @@ km_dict[app.config['k']] = TimeSeriesKMeans.from_pickle(f"models/{app.config['an
 # My testing model
 app.config[f"k{app.config['k']}"] = km_dict[app.config['k']] # Should be a tslearn TimeSeriesKMeans obj
 barred_args = ['self',
-               'data_file_descriptor',
                'directory',
                'generation_time_path',
                'to_omit',
                'exclude_subdirs',
-               'time_field',
-               'value_field',
                'use_friendly_note',
                'readfile_kwargs',
-               'tmp_data']
+               'tmp_data',
+               'use_plotting_on_log10_scale']
 Msmc_clustering_args = Msmc_clustering.__init__.__code__.co_varnames
 Msmc_clustering_args = [i for i in Msmc_clustering_args if i not in barred_args]
 app.config['Msmc_clustering_args'] = Msmc_clustering_args
@@ -102,22 +103,89 @@ def plotData():
 
 @app.route('/plot_clusters')
 def plotClusters():
+    def to_int(to_int_list, my_dict):
+        for thing in to_int_list:
+            my_dict[thing] = int(my_dict[thing])
+        return my_dict
+    
+    def to_float(to_float_list, my_dict):
+        for thing in to_float_list:
+            my_dict[thing] = float(my_dict[thing])
+        return my_dict
+            
+    def to_bool(to_bool_list, my_dict):
+        for thing in to_bool_list:
+            my_dict[thing] = my_dict[thing] == 'True'
+        return my_dict
+
+    def to_list(to_list_list, my_dict):
+        for thing in to_list_list:
+            umm = thing.split(',')
+            if len(umm) > 1:
+                my_dict[thing] = [float(t) for t in umm]
+                print(my_dict[thing])
+        return my_dict
+
+    to_int_list = ['interpolation_pts',
+                'manual_cluster_count',
+                'omit_back_prior',
+                'omit_front_prior']
+    to_float_list = ['mu']
+    to_bool_list = ['use_interpolation',
+                    'use_real_time_and_c_rate_transform',
+                    'use_time_log10_scaling',
+                    'use_value_normalization']
+    to_list_list = ['time_window']
     # Load form results
-    form_results = session['form_results']
+    user_settings = session['form_results']
     # CURRENTLY WORKING ON HOW TO READ FREAKING FORM DATA
     print("plotClusters")
-    print(f"mu: {session['form_results'].get('mu')}")
-    print("request.form: ", session['form_results'])
-    # Make plotly subplot
-    # Read from Uploaded File Path
-    data_file_path = session.get('uploaded_data_file_path', None)
-    # read csv
-    uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')
-    fig = px.line(uploaded_df, x='time', y='NE', title='Muh plot')
-    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
+    data_file_path = session.get('uploaded_data_file_path', None)   
+    # user_settings['directory']=data_file_path # Update user_settings file path 
+    user_settings['directory'] = 'static/uploads/' # Lame way of loading user input (VERY BAD CUZ ALL DATA CAN BE FROM DIFFERENT SESSIONS AND FORMATS)
+    common_settings  = {'generation_time_path':'data/generation_lengths/',
+                        'exclude_subdirs':[],
+                        'use_plotting_on_log10_scale':False,
+                        'sep':'\t',
+                        'data_file_descriptor': '.csv'}
+    user_defaults = common_settings.copy()
+    non_user_settings_to_update = {'directory':'data/msmc_curve_data_birds/',
+                                   'time_field':'left_time_boundary',
+                                   'value_field':'lambda',
+                                   'data_file_descriptor':'.txt'}
+    user_defaults.update(user_settings) # Load user settings for user dataset
     
-    return render_template('plot_csv_data.html', fname=session['fname'],
-                           data_var=uploaded_df, graphJSON=graphJSON)
+    non_user_settings = user_settings.copy() # Modify user settings but for base dataset
+    non_user_settings.update(non_user_settings_to_update)
+    
+    
+    print("non_user_settings = ", non_user_settings)
+    print("user_settings = ", user_defaults)
+    m_obj_base = Msmc_clustering(**non_user_settings)
+    m_obj_user = Msmc_clustering(**user_defaults)
+    m_obj_base.cluster_curves(plot_everything=False)
+    cols = 2         
+    k=m_obj_base.manual_cluster_count                 
+    rows = given_col_find_row(k=k, cols=cols)
+    fig = make_subplots(rows=rows, cols=cols,
+                        subplot_titles=([f"Cluster {label}" for label in range(1, k+1)]))
+    # Adding background training curves to curve cluster plot
+    for name in m_obj_base.name2series:
+        add_curve_to_subplot(fig=fig,
+                             name=name,
+                             cols=cols,
+                             Msmc_clustering=m_obj_base,
+                             km=None,
+                             marker_color='rgba(0, 180, 255, .8)')
+    # Add curve from user input
+    add_curve_to_subplot(fig=fig,
+                         name=name,
+                         cols=cols,
+                         Msmc_clustering=m_obj_user,
+                         km=m_obj_base.km,
+                         marker_color='rgba(180, 0, 255, .8)')
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
+    return render_template('plot_clusters.html', fname=session['fname'], graphJSON=graphJSON)
 
 
 
