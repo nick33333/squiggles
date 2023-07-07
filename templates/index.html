@@ -6,9 +6,11 @@
 <body> 
     <form method = "POST" enctype="multipart/form-data" action = "/">   
         <input type="file" name="file" accept=".csv">
+
         {% for Msmc_clustering_arg in Msmc_clustering_args %}
-        <p>{{Msmc_clustering_arg}}<input type = "text" name = "{{Msmc_clustering_arg}}" /></p>
+        <p>{{Msmc_clustering_arg}}: <input type = "text" name = "{{Msmc_clustering_arg}}" /></p>
         {% endfor%}
+
         <input type = "submit" value="Upload"> 
     </form>
     <p style="color:blue;">Choose csv file to upload</p>

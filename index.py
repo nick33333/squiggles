@@ -48,40 +48,38 @@ km_dict[app.config['k']] = TimeSeriesKMeans.from_pickle(f"models/{app.config['an
 
 # My testing model
 app.config[f"k{app.config['k']}"] = km_dict[app.config['k']] # Should be a tslearn TimeSeriesKMeans obj
+barred_args = ['self',
+               'data_file_descriptor',
+               'directory',
+               'generation_time_path',
+               'to_omit',
+               'exclude_subdirs',
+               'time_field',
+               'value_field',
+               'use_friendly_note',
+               'readfile_kwargs',
+               'tmp_data']
+Msmc_clustering_args = Msmc_clustering.__init__.__code__.co_varnames
+Msmc_clustering_args = [i for i in Msmc_clustering_args if i not in barred_args]
+app.config['Msmc_clustering_args'] = Msmc_clustering_args
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    barred_args = ['self',
-                   'data_file_descriptor',
-                   'directory',
-                   'generation_time_path',
-                   'to_omit',
-                   'exclude_subdirs',
-                   'time_field',
-                   'value_field',
-                   'use_friendly_note']
-    Msmc_clustering_args = Msmc_clustering.__init__.__code__.co_varnames
-    Msmc_clustering_args = [i for i in Msmc_clustering_args if i not in barred_args]
     if request.method == 'POST':
-        # upload file flask
-        f = request.files.get('file')
-        # Extracting uploaded file name
+        session['form_results'] = request.form  # saves form data after upload
+        f = request.files.get('file')  # Extracting uploaded file name
         data_filename = secure_filename(f.filename)
         session['fname'] = data_filename
-        f.save(os.path.join(app.config['UPLOAD_FOLDER'],
-                            data_filename))
+        f.save(os.path.join(app.config['UPLOAD_FOLDER'], data_filename))
         session['uploaded_data_file_path'] = os.path.join(app.config['UPLOAD_FOLDER'], data_filename)
         return render_template('index2.html', Msmc_clustering_args=Msmc_clustering_args)
     return render_template("index.html", Msmc_clustering_args=Msmc_clustering_args)
 
 @app.route('/show_data')
 def showData():
-    # Uploaded File Path
-    data_file_path = session.get('uploaded_data_file_path', None)
-    # read csv
-    uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')
-    # Converting to html Table
-    uploaded_df_html = uploaded_df.to_html()
+    data_file_path = session.get('uploaded_data_file_path', None)  # Uploaded File Path
+    uploaded_df = pd.read_csv(data_file_path, encoding='unicode_escape')  # read csv
+    uploaded_df_html = uploaded_df.to_html()  # Converting to html Table
     
     return render_template('show_csv_data.html', fname=session['fname'], data_var=uploaded_df_html)
 
@@ -89,7 +87,7 @@ def showData():
 def plotData():
     # Read dataset
     form_data = request.form
-    print(form_data)
+    print(list(form_data.items()))
     # Make plotly subplot
     
     # Read from Uploaded File Path
@@ -104,12 +102,13 @@ def plotData():
 
 @app.route('/plot_clusters')
 def plotClusters():
-    # Read dataset
-    
+    # Load form results
+    form_results = session['form_results']
     # CURRENTLY WORKING ON HOW TO READ FREAKING FORM DATA
-    form_data = request.form
+    print("plotClusters")
+    print(f"mu: {session['form_results'].get('mu')}")
+    print("request.form: ", session['form_results'])
     # Make plotly subplot
-    
     # Read from Uploaded File Path
     data_file_path = session.get('uploaded_data_file_path', None)
     # read csv
