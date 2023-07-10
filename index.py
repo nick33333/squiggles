@@ -200,7 +200,7 @@ def plotClusters():
                              cols=cols,
                              Msmc_clustering=m_obj_base,
                              km=None,
-                             marker_color='rgba(0, 180, 255, .8)')
+                             marker_color='rgba(0, 180, 255, .5)')
     # Add curve from user input
     for name in m_obj_user.name2series:
         add_curve_to_subplot(fig=fig,
@@ -209,6 +209,8 @@ def plotClusters():
                             Msmc_clustering=m_obj_user,
                             km=m_obj_base.km,
                             marker_color='rgba(180, 0, 255, .8)')
+    fig.update_layout(width=1900,
+                      height=1000,)
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
     return render_template('plot_clusters.html', fname=session['fname'], graphJSON=graphJSON)
 
