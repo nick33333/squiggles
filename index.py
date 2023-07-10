@@ -103,6 +103,17 @@ def plotData():
 
 @app.route('/plot_clusters')
 def plotClusters():
+    def manual_modify_dict(my_dict,
+                           to_int_list,
+                           to_float_list,
+                           to_bool_list,
+                           to_list_list):
+        my_dict = to_int(to_int_list, my_dict)
+        my_dict = to_float(to_float_list, my_dict)
+        my_dict = to_bool(to_bool_list, my_dict)
+        my_dict = to_li(to_list_list, my_dict)
+        return my_dict
+        
     def to_int(to_int_list, my_dict):
         for thing in to_int_list:
             my_dict[thing] = int(my_dict[thing])
@@ -118,7 +129,7 @@ def plotClusters():
             my_dict[thing] = my_dict[thing] == 'True'
         return my_dict
 
-    def to_list(to_list_list, my_dict):
+    def to_li(to_list_list, my_dict):
         for thing in to_list_list:
             umm = thing.split(',')
             if len(umm) > 1:
@@ -142,29 +153,42 @@ def plotClusters():
     print("plotClusters")
     data_file_path = session.get('uploaded_data_file_path', None)   
     # user_settings['directory']=data_file_path # Update user_settings file path 
+    non_user_settings = user_settings.copy() # Modify user settings but for base dataset
     user_settings['directory'] = 'static/uploads/' # Lame way of loading user input (VERY BAD CUZ ALL DATA CAN BE FROM DIFFERENT SESSIONS AND FORMATS)
     common_settings  = {'generation_time_path':'data/generation_lengths/',
                         'exclude_subdirs':[],
-                        'use_plotting_on_log10_scale':False,
-                        'sep':'\t',
+                        'use_plotting_on_log10_scale': False,
+                        'sep': '\t',
                         'data_file_descriptor': '.csv'}
     user_defaults = common_settings.copy()
     non_user_settings_to_update = {'directory':'data/msmc_curve_data_birds/',
                                    'time_field':'left_time_boundary',
                                    'value_field':'lambda',
                                    'data_file_descriptor':'.txt'}
+    
     user_defaults.update(user_settings) # Load user settings for user dataset
     
-    non_user_settings = user_settings.copy() # Modify user settings but for base dataset
+    non_user_settings.update(common_settings)
     non_user_settings.update(non_user_settings_to_update)
-    
-    
+    # Manual dict val casting :-p
+    non_user_settings = manual_modify_dict(my_dict=non_user_settings,
+                                           to_int_list=to_int_list,
+                                           to_float_list=to_float_list,
+                                           to_bool_list=to_bool_list,
+                                           to_list_list=to_list_list)
+    user_defaults = manual_modify_dict(my_dict=user_defaults,
+                                       to_int_list=to_int_list,
+                                       to_float_list=to_float_list,
+                                       to_bool_list=to_bool_list,
+                                       to_list_list=to_list_list)
     print("non_user_settings = ", non_user_settings)
     print("user_settings = ", user_defaults)
+    
     m_obj_base = Msmc_clustering(**non_user_settings)
+    
     m_obj_user = Msmc_clustering(**user_defaults)
     m_obj_base.cluster_curves(plot_everything=False)
-    cols = 2         
+    cols = 2
     k=m_obj_base.manual_cluster_count                 
     rows = given_col_find_row(k=k, cols=cols)
     fig = make_subplots(rows=rows, cols=cols,
@@ -178,12 +202,13 @@ def plotClusters():
                              km=None,
                              marker_color='rgba(0, 180, 255, .8)')
     # Add curve from user input
-    add_curve_to_subplot(fig=fig,
-                         name=name,
-                         cols=cols,
-                         Msmc_clustering=m_obj_user,
-                         km=m_obj_base.km,
-                         marker_color='rgba(180, 0, 255, .8)')
+    for name in m_obj_user.name2series:
+        add_curve_to_subplot(fig=fig,
+                            name=name,
+                            cols=cols,
+                            Msmc_clustering=m_obj_user,
+                            km=m_obj_base.km,
+                            marker_color='rgba(180, 0, 255, .8)')
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)    
     return render_template('plot_clusters.html', fname=session['fname'], graphJSON=graphJSON)
 
