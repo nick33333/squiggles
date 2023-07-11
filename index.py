@@ -26,7 +26,9 @@ sys.path.insert(1, 'MSMC_clustering/')
 from MSMC_clustering import Msmc_clustering
 from MSMC_plotting import *
 from MSMC_form_kwarg_handler import manual_modify_dict
+import dash_bootstrap_components as dbc
 
+from dash import Dash, html
 '''
 To use flask shell:
 $ export FLASK_APP=index
@@ -72,13 +74,31 @@ to_list_list = ['time_window']
 
 # App config
 app = Flask(__name__)
+# app = Dash(__name__)
 bootstrap = Bootstrap(app)
 app.secret_key = 'This is your secret key to utilize session in Flask'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 Msmc_clustering_args = Msmc_clustering.__init__.__code__.co_varnames
 Msmc_clustering_args = [i for i in Msmc_clustering_args if i not in
                         barred_args]
+print(Msmc_clustering_args)
+Msmc_clustering_form_defaults = {'data_file_descriptor': '.txt',
+                            'mu': 1.4E-9,
+                            'manual_cluster_count': 7,
+                            'algo': 'kmeans',
+                            'omit_front_prior': 5, 
+                            'omit_back_prior': 5, 
+                            'time_window': '', 
+                            'time_field': 'left_time_boundary', 
+                            'value_field': 'lambda', 
+                            'interpolation_pts': 70, 
+                            'interpolation_kind': 'linear', 
+                            'use_interpolation': True, 
+                            'use_real_time_and_c_rate_transform': True, 
+                            'use_value_normalization': True, 
+                            'use_time_log10_scaling': True}
 app.config['Msmc_clustering_args'] = Msmc_clustering_args
+app.config['Msmc_clustering_form_defaults'] = Msmc_clustering_form_defaults
 
 
 # Helper functions
@@ -135,9 +155,12 @@ def index():
                 file.save(find_upload_path(data_filename=data_filename))
                 session['path_to_last_upload'] = find_upload_path(data_filename=data_filename)
         return render_template('index2.html',
-                               Msmc_clustering_args=Msmc_clustering_args)
+                               Msmc_clustering_args=Msmc_clustering_args,
+                               Msmc_clustering_form_defaults=Msmc_clustering_form_defaults)
+    # clean_uploads(session)
     return render_template("index.html",
-                           Msmc_clustering_args=Msmc_clustering_args)
+                           Msmc_clustering_args=Msmc_clustering_args,
+                           Msmc_clustering_form_defaults=Msmc_clustering_form_defaults)
 
 @app.route('/show_data')
 def showData():
@@ -174,7 +197,6 @@ def plotClusters():
 
     # Load form results
     user_settings = session['form_results']
-    # CURRENTLY WORKING ON HOW TO READ FREAKING FORM DATA
     print("plotClusters")
     # data_file_path = session.get('path_to_last_upload', None)
     # user_settings['directory']=data_file_path # Update user_settings file path 
@@ -228,7 +250,8 @@ def plotClusters():
                              cols=cols,
                              Msmc_clustering=m_obj_base,
                              km=None,
-                             marker_color='rgba(0, 180, 255, .3)')
+                             marker_color='rgba(0, 180, 255, .3)', # From here on, goScatter_kwargs
+                             )
     # Add curve from user input
     for name in m_obj_user.name2series:
         add_curve_to_subplot(fig=fig,
@@ -236,9 +259,12 @@ def plotClusters():
                              cols=cols,
                              Msmc_clustering=m_obj_user,
                              km=m_obj_base.km,
-                             marker_color='rgba(180, 0, 255, .8)')
+                             marker_color='rgba(180, 0, 255, .8)'  # From here on, goScatter_kwargs,
+                             )
     fig.update_layout(width=1900,
                       height=1000,)
+    
+    
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
     
     return render_template('plot_clusters.html',

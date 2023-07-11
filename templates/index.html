@@ -8,7 +8,7 @@
         <input type="file" name="file(s)"  multiple="true">
 
         {% for Msmc_clustering_arg in Msmc_clustering_args %}
-        <p>{{Msmc_clustering_arg}}: <input type = "text" name = "{{Msmc_clustering_arg}}" /></p>
+        <p>{{Msmc_clustering_arg}}: <input type = "text" name = "{{Msmc_clustering_arg}}" value = "{{Msmc_clustering_form_defaults.get(Msmc_clustering_arg)}}"/></p>
         {% endfor%}
 
         <input type = "submit" value="Upload"> 
