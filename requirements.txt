@@ -9,4 +9,5 @@ scikit-learn
 h5py
 werkzeug
 plotly
-
+dash
+dash-bootstrap-components
