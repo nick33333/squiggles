@@ -243,6 +243,7 @@ def plotClusters():
     rows = given_col_find_row(k=k, cols=cols)
     fig = make_subplots(rows=rows, cols=cols,
                         subplot_titles=([f"Cluster {label}" for label in range(1, k+1)]))
+    fig.update_layout(hovermode='closest')
     # Adding background training curves to curve cluster plot
     for name in m_obj_base.name2series:
         add_curve_to_subplot(fig=fig,
@@ -264,8 +265,22 @@ def plotClusters():
     fig.update_layout(width=1900,
                       height=1000,)
     
-    
-    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    # create our callback function
+    scatter = fig.data[0]
+    colors = ['#a3a7e4'] * (len(m_obj_base.name2series) + len(m_obj_user.name2series))
+    scatter.marker.color = colors
+    scatter.marker.size = [10] * (len(m_obj_base.name2series) + len(m_obj_user.name2series))    
+    def update_point(trace, points, selector):
+        c = list(scatter.marker.color)
+        s = list(scatter.marker.size)
+        for i in points.point_inds:
+            c[i] = '#bae2be'
+            s[i] = 20
+            with fig.batch_update():
+                scatter.marker.color = c
+                scatter.marker.size = s
+    scatter.on_click(update_point)
+    graphJSON = json.dumps(scatter, cls=plotly.utils.PlotlyJSONEncoder)
     
     return render_template('plot_clusters.html',
                            fname=session['fname'],
