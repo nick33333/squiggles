@@ -11,5 +11,7 @@ werkzeug
 plotly
 dash
 dash-bootstrap-components
-ipywidgets==7.7.1
-jupyterlab_widgets==1.1.1
+
+jupyterlab-plotly-extension
+jupyterlab
+ipywidgets
