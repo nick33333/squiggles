@@ -6,6 +6,8 @@ import pandas as pd
 import pickle
 import sys
 import os
+import json
+import colorsys
 import copy
 # Import weird stuff
 sys.path.insert(1, 'MSMC_clustering/')
@@ -82,8 +84,10 @@ print(type(km), km)
 rows = given_col_find_row(k=k, cols=2)
 fig = make_subplots(rows=rows, cols=2,
                     subplot_titles=([f"Cluster {label}" for label in range(1, k+1)]))
+fig.update_layout(showlegend=False)
 label2series_names, name2trace_index = compute_label2series_names_and_name2trace_index(Msmc_clustering=Msmc_clustering,
                                                                                        km=km)
+trace_index2name = {name2trace_index[name]: name for name in name2trace_index.keys()}
 label2dist_matrix, series_name2label = compute_intra_cluster_dtw_dist_matrix(Msmc_clustering=Msmc_clustering,
                                                                             label2series_names=label2series_names)
 for name in Msmc_clustering.name2series:
@@ -177,22 +181,35 @@ app.layout = html.Div([
                      id='selected-dataset'),  # Can use this for data selection
         
         "Number of columns to plot",
-        dcc.Dropdown(id='num-columns'),
+        dcc.Dropdown(cluster_range,
+                     value=7,
+                     id='num-columns'),
 
         html.Br(),
-        "Fig",
         html.Div(
-            html.Div(
-                dcc.Graph(figure=fig,
-                          style={'width': '100%',
-                                  'height': '100%'
-                                  }
-                        ),
+            html.Div([
+                "Select cluster",
+                dcc.Dropdown(id='curve-clusters-dropdown'),
+
+                dcc.Graph(style={'width': '100%',
+                                 'height': '80%'},
+                          id='selected-curve-cluster',
+                          ),
+                        
+                html.H1(id = 'new-trace-index'),
+                dcc.Slider(2,
+                           41,
+                           step=None,
+                           id='k-nearest-slider',
+                           value=2,
+                           marks={str(i): str(i) for i in range(1, 41)}),
+                ],
                 style={
                     "width": "100%",
                     'height': '100%'
                 }
                 ),
+
             style={
                     "width": "60%",
                     "height": "800px",
@@ -204,17 +221,12 @@ app.layout = html.Div([
                 }
         ),
         html.Div(
-            html.Div([
-                dcc.Dropdown(id='curve-clusters-dropdown'),
-                # dcc.Graph(figure=f,
-                #           style={'width': '100%',
-                #                   'height': '100%'},
-                #           id='selected-curve-cluster'
-                #         ),
-                dcc.Graph(style={'width': '100%',
-                                 'height': '80%'},
-                          id='selected-curve-cluster')
-                ],
+            html.Div(
+                dcc.Graph(figure=fig,
+                          style={'width': '100%',
+                                  'height': '100%'
+                                  }
+                        ),
                 style={
                     "width": "100%",
                     'height': '100%'
@@ -229,7 +241,33 @@ app.layout = html.Div([
                     "padding-left": "1px",
                     "overflow": "hidden"
                 }
-        )
+        ),
+        html.Div(
+            html.Div([
+
+
+                dcc.Graph(style={'width': '100%',
+                                 'height': '80%'},
+                          id='curve-cluster-heatmap'),
+
+                ],
+                style={
+                    "width": "100%",
+                    'height': '100%'
+                }
+                ),
+
+            style={
+                    "width": "60%",
+                    "height": "800px",
+                    "display": "inline-block",
+                    "border": "3px #5c5c5c solid",
+                    "padding-top": "5px",
+                    "padding-left": "1px",
+                    "overflow": "hidden"
+                }
+        ),
+        # html.Pre(id='hover-data')
 
         
 
@@ -265,6 +303,8 @@ def set_curve_clusters_options(selected_cluster_number):
 
 @callback(
     Output('selected-curve-cluster', 'figure'),
+    Output('new-trace-index', 'value'),
+    # Input('clicky-data', 'clickData'),
     Input('curve-clusters-dropdown', 'value'))
 def update_selected_cluster_fig(selected_cluster):
     print('selected_cluster',selected_cluster)
@@ -272,28 +312,129 @@ def update_selected_cluster_fig(selected_cluster):
     f.layout.hovermode = 'closest'
     f.layout.hoverdistance = -1 #ensures no "gaps" for selecting sparse data
     default_linewidth = 2
-    default_color = 'rgba(0, 180, 255, .8)'
-    highlighted_linewidth_delta = 2
+    default_color = 'rgba(0, 180, 255, .3)'
     selected_series_names = label2series_names[selected_cluster-1]
-    selected_dist_matrix = label2dist_matrix[selected_cluster-1]
+
+
+    time_field = Msmc_clustering.time_field
+    value_field = Msmc_clustering.value_field
+    
+    new_trace_index2name =  dict()
+    for idx, name in enumerate(selected_series_names):
+        new_trace_index2name[idx] = name
+        series = Msmc_clustering.name2series[name]
+        trace = go.Scatter(mode='lines',
+                           x=series[time_field],
+                           y=series[value_field],
+                           name=name,
+                           line={'color':default_color,
+                               'width': default_linewidth},
+                           hovertemplate = f'<i>{name}<i>' +
+                                           f'<br><b>{time_field}</b>:' + '%{x}</br>' +
+                                           f'<br><b>{value_field}</b>:' + '%{y}<br>' +
+                                           '<extra></extra>'
+                                           
+                        )
+        f.add_trace(trace)
+
+    return f, new_trace_index2name
+
+@callback(
+    Output('curve-cluster-heatmap', 'figure'),
+    Input('new-trace-index', 'value'),
+    Input('curve-clusters-dropdown', 'value'),
+    Input('k-nearest-slider', 'value'),
+    Input('selected-curve-cluster', 'clickData'))
+def update_curve_cluster_heatmap(new_trace_index2name,
+                                 selected_cluster,
+                                 k_nearest,
+                                 clickData):
+    print('selected_cluster',selected_cluster)
+    print("clickData")
+    print()
+    print(clickData)
+    print('new-trace-index', new_trace_index2name)
+    f = go.FigureWidget()
+    f.layout.hovermode = 'closest'
+    f.layout.hoverdistance = -1 #ensures no "gaps" for selecting sparse data
+    default_linewidth = 2
+    default_color = 'rgba(0, 180, 255, .3)'
+    alt_color = 'rgba(255, 0, 180, .3)'
+    selected_series_names = label2series_names[selected_cluster-1]
+    trace_idx = clickData['points'][0]['curveNumber']
+    print('trace_idx', trace_idx)
+    series_name = new_trace_index2name.get(str(trace_idx), None)  # Wacky cast to str :-(
+    print(series_name)
+    k_neighbors_dists_of_name = find_k_neighbors(series_name=series_name,
+                                                label2dist_matrix=label2dist_matrix,
+                                                label2series_names=label2series_names,
+                                                series_name2label=series_name2label,
+                                                k_nearest=k_nearest)
+    k_neighbors_names = [x[0] for x in k_neighbors_dists_of_name]
+    print('k_neighbors_names',k_neighbors_names)
+    max_dist = max(max(k_neighbors_dists_of_name, key=lambda x:x[1])[1], 0.00001)
+    print(k_neighbors_dists_of_name)
+    print('max_dist', max_dist)
+    time_field = Msmc_clustering.time_field
+    value_field = Msmc_clustering.value_field
+    
 
     for name in selected_series_names:
-        series = Msmc_clustering.name2series[name]
-        trace = go.Scatter(x=series[Msmc_clustering.time_field],
-                        y=series[Msmc_clustering.value_field],
-                        line={'color':default_color,
-                                'width': default_linewidth})
-        f.add_trace(trace)
-    def update_trace(trace, points, selector):
-    # this list stores the points which were clicked on
-    # in all but one trace they are empty
-        if len(points.point_inds) == 0:
-            return
-        for i,_ in enumerate(f.data):
-            f.data[i]['line']['width'] = default_linewidth + highlighted_linewidth_delta * (i == points.trace_index)
-            f.data[i]['line']['color'] = 'rgba(0,0,0,1)'
-    for i in range( len(f.data) ):
-        f.data[i].on_click(update_trace)
+        print('name', name)
+        if name not in k_neighbors_names:
+            print("regular plot")
+            default_hovertemplate_data = f'<i>{name}<i>' + \
+                                        f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
+                                        f'<br><b>{value_field}</b>:' + '%{y}<br>'             
+            series = Msmc_clustering.name2series[name]
+            trace = go.Scatter(mode='lines',
+                               x=series[time_field],
+                               y=series[value_field],
+                               name=name,
+                               line={'color':default_color,
+                                   'width': default_linewidth},
+                               hovertemplate = default_hovertemplate_data +
+                                               '<extra></extra>'                  
+                            )
+            f.add_trace(trace)
+        else:
+            print("alt plot")
+            default_hovertemplate_data = f'<i>{name}<i>' + \
+                                        f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
+                                        f'<br><b>{value_field}</b>:' + '%{y}<br>'             
+            series = Msmc_clustering.name2series[name]
+            trace = go.Scatter(mode='lines',
+                               x=series[time_field],
+                               y=series[value_field],
+                               name=name,
+                               line={'color':alt_color,
+                                   'width': default_linewidth},
+                               hovertemplate = default_hovertemplate_data +
+                                               '<extra></extra>'                  
+                            )
+            f.add_trace(trace)
+    print("k_neighbors_dists_of_name", k_neighbors_dists_of_name)
+    for name, dist in k_neighbors_dists_of_name:
+        print('selected plotting')
+        default_hovertemplate_data = f'<i>{name}<i>'
+        default_hovertemplate_data = f'<i>{name}<i>' + \
+                                    f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
+                                    f'<br><b>{value_field}</b>:' + '%{y}<br>' 
+        new_hovertemplate = default_hovertemplate_data + f'<br><b>Distance to {series_name}</b>:' + f'{dist}<br>'
+        (h, s, v) = ((dist/max_dist)*(80/360), 1, 1) # dist is multiplied by 80/360 to  make hsv range from red to greenish
+        (r, g, b) = [255*i for i in colorsys.hsv_to_rgb(h, s, v)]
+        print(f"r {r} g {g} b {b}")
+        f.update_traces(
+                          line=dict(
+                                      color=f"rgba({r}, {g}, {b}, 1)",
+                                     ), 
+                          hovertemplate = new_hovertemplate,
+                          selector = dict(
+                                          name=name
+                                         ),
+                         )
+
+        
     return f
 
 

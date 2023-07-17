@@ -1,6 +1,7 @@
 from dash import Dash, html, dcc, Input, Output, callback
 import pandas as pd
 import plotly.express as px
+import json
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -62,7 +63,9 @@ app.layout = html.Div([
         id='crossfilter-year--slider',
         value=df['Year'].max(),
         marks={str(year): str(year) for year in df['Year'].unique()}
-    ), style={'width': '49%', 'padding': '0px 20px 20px 20px'})
+    ), style={'width': '49%', 'padding': '0px 20px 20px 20px'}),
+    
+    html.Pre(id='hover-data')
 ])
 
 
@@ -135,6 +138,13 @@ def update_x_timeseries(hoverData, yaxis_column_name, axis_type):
     dff = df[df['Country Name'] == hoverData['points'][0]['customdata']]
     dff = dff[dff['Indicator Name'] == yaxis_column_name]
     return create_time_series(dff, axis_type, yaxis_column_name)
+
+@callback(
+    Output('hover-data', 'children'),
+    Input('crossfilter-indicator-scatter', 'hoverData'))
+def display_hover_data(hoverData):
+    return json.dumps(hoverData, indent=2)
+
 
 
 if __name__ == '__main__':
