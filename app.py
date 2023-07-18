@@ -305,6 +305,7 @@ def set_curve_clusters_options(selected_cluster_number):
 
 '''
 Gotta fix trace index issue:
+- HINT? When mind-fucking error occurs, hovertemplate info appears crudely/weirdly on top left corner
 - clickData needs a way to save sample name to customdata
 - On first pass, trace_index is fine
 - After that, traces get funky
@@ -351,6 +352,7 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                                                     k_nearest=k_nearest)
         k_neighbors_names = [x[0] for x in k_neighbors_dists_of_name]
         max_dist = max(max(k_neighbors_dists_of_name, key=lambda x:x[1])[1], 0.00001)
+        new_trace_index2name = dict()
     else:
         new_trace_index2name = dict()
         k_neighbors_dists_of_name = []
@@ -358,9 +360,8 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
         max_dist = 0.00001
     # new_trace_index2name =  dict()
     for idx, name in enumerate(selected_series_names):
-        # print('name', name)
         if name not in k_neighbors_names:
-            # print("regular plot")
+            print("regular plot name", name)
             default_hovertemplate_data = f'<i>{name}<i>' + \
                                         f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
                                         f'<br><b>{value_field}</b>:' + '%{y}<br>'             
@@ -371,15 +372,14 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                                name=name,
                                line={'color':default_color,
                                    'width': default_linewidth},
-                               customdata=[name],
                                hovertemplate = default_hovertemplate_data +
                                                '<extra></extra>'                  
                             )
             f.add_trace(trace)
             new_trace_index2name[idx] = name
-            # f.update_traces(customdata=[name2trace_index[name]],
-            #                 selector = dict(name=name))    
+
         else:
+            print("alt plot name", name)
             # print("alt plot")
             default_hovertemplate_data = f'<i>{name}<i>' + \
                                         f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
@@ -395,14 +395,14 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                                                '<extra></extra>'                  
                             )
             f.add_trace(trace)
-            # f.update_traces(customdata=[name2trace_index[name]],
-            #                 selector = dict(name=name))
+
             new_trace_index2name[idx] = name
+    print()
     # print('fig data:')
     # print(f.data)
     # print("k_neighbors_dists_of_name", k_neighbors_dists_of_name)
     for name, dist in k_neighbors_dists_of_name:
-        # print('selected plotting')
+        print('selected plotting')
         default_hovertemplate_data = f'<i>{name}<i>'
         default_hovertemplate_data = f'<i>{name}<i>' + \
                                     f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
@@ -561,4 +561,4 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
