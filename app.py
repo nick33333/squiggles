@@ -87,6 +87,8 @@ fig = make_subplots(rows=rows, cols=2,
 fig.update_layout(showlegend=False)
 label2series_names, name2trace_index = compute_label2series_names_and_name2trace_index(Msmc_clustering=Msmc_clustering,
                                                                                        km=km)
+label2pseudo_trace_index2series_names = {label: label2series_names[label]
+                                         for label in label2series_names} # Kinda essential for curve heatmap
 trace_index2name = {name2trace_index[name]: name for name in name2trace_index.keys()}
 label2dist_matrix, series_name2label = compute_intra_cluster_dtw_dist_matrix(Msmc_clustering=Msmc_clustering,
                                                                             label2series_names=label2series_names)
@@ -142,6 +144,7 @@ immutable_data_copy = copy.deepcopy(fig.data)  # Should only be assigned once (a
 df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/gapminderDataFiveYear.csv')
 
 app = Dash(__name__)
+app.config.suppress_callback_exceptions=True
 colors = {
     'background': '#0E1012',
     'text': '#FFFFFF'
@@ -196,7 +199,7 @@ app.layout = html.Div([
                           id='selected-curve-cluster',
                           ),
                         
-                html.H1(id = 'new-trace-index'),
+                # html.H1(id = 'new-trace-index'),
                 dcc.Slider(2,
                            41,
                            step=None,
@@ -314,18 +317,16 @@ Gotta fix trace index issue:
 '''
 @callback(
     Output('selected-curve-cluster', 'figure'),
-    Output('selected-curve-cluster', 'value'), # new_trace_index2name
     Input('selected-curve-cluster', 'clickData'),
-    Input('selected-curve-cluster', 'value'), # new_trace_index2name
     Input('curve-clusters-dropdown', 'value'),
     Input('k-nearest-slider', 'value'),)
-def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluster, k_nearest):
-    print('selected_cluster',selected_cluster)
-    print("IS THIS THE CLICK DATA?")
-    print(clickData)
+def update_selected_cluster_fig(clickData, selected_cluster, k_nearest):
+    # print('selected_cluster',selected_cluster, type(selected_cluster))
+    # print("IS THIS THE CLICK DATA?")
+    # print(clickData)
     # print()
     # print('new trace index who dis')
-    # print(new_trace_index2name)
+    # print(label2pseudo_trace_index2series_names.get(selected_cluster, None))
     f = go.FigureWidget()
     f.layout.hovermode = 'closest'
     f.layout.hoverdistance = -1 #ensures no "gaps" for selecting sparse data
@@ -335,16 +336,14 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
     selected_series_names = label2series_names[selected_cluster-1]
     time_field = Msmc_clustering.time_field
     value_field = Msmc_clustering.value_field
-    
     if clickData is not None:
         trace_idx = clickData['points'][0]['curveNumber']
-        print('new_trace_index2name', new_trace_index2name)
-        print('trace index', type(trace_idx), trace_idx)
-        # new_trace_index2name
-        series_name=new_trace_index2name.get(str(trace_idx), None)
-        print(f'series name: {series_name}')
-        clickData['name'] = series_name
-        print(clickData)
+        # print('label2pseudo_trace_index2series_names', label2pseudo_trace_index2series_names.get(selected_cluster-1, None))
+        # print('trace index', type(trace_idx), trace_idx)
+        # label2pseudo_trace_index2series_names
+        series_name=label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[trace_idx]
+        # print(f'series name: {series_name}')
+        # print(clickData)
         k_neighbors_dists_of_name = find_k_neighbors(series_name=series_name,
                                                     label2dist_matrix=label2dist_matrix,
                                                     label2series_names=label2series_names,
@@ -352,16 +351,13 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                                                     k_nearest=k_nearest)
         k_neighbors_names = [x[0] for x in k_neighbors_dists_of_name]
         max_dist = max(max(k_neighbors_dists_of_name, key=lambda x:x[1])[1], 0.00001)
-        new_trace_index2name = dict()
     else:
-        new_trace_index2name = dict()
         k_neighbors_dists_of_name = []
         k_neighbors_names = []
         max_dist = 0.00001
-    # new_trace_index2name =  dict()
     for idx, name in enumerate(selected_series_names):
         if name not in k_neighbors_names:
-            print("regular plot name", name)
+            # print("regular plot name", name)
             default_hovertemplate_data = f'<i>{name}<i>' + \
                                         f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
                                         f'<br><b>{value_field}</b>:' + '%{y}<br>'             
@@ -376,10 +372,11 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                                                '<extra></extra>'                  
                             )
             f.add_trace(trace)
-            new_trace_index2name[idx] = name
+            # print(label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[idx], name)
+            # print("Same? ", label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[idx] == name)
 
         else:
-            print("alt plot name", name)
+            # print("alt plot name", name)
             # print("alt plot")
             default_hovertemplate_data = f'<i>{name}<i>' + \
                                         f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
@@ -396,13 +393,12 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                             )
             f.add_trace(trace)
 
-            new_trace_index2name[idx] = name
-    print()
+    # print()
     # print('fig data:')
     # print(f.data)
     # print("k_neighbors_dists_of_name", k_neighbors_dists_of_name)
     for name, dist in k_neighbors_dists_of_name:
-        print('selected plotting')
+        # print('selected plotting')
         default_hovertemplate_data = f'<i>{name}<i>'
         default_hovertemplate_data = f'<i>{name}<i>' + \
                                     f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
@@ -422,9 +418,9 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
                          )
 
         
-    return f, new_trace_index2name
+    return f
     # for idx, name in enumerate(selected_series_names):
-    #     new_trace_index2name[idx] = name
+    #     label2pseudo_trace_index2series_names[idx] = name
     #     series = Msmc_clustering.name2series[name]
     #     trace = go.Scatter(mode='lines',
     #                        x=series[time_field],
@@ -440,9 +436,12 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
     #                     )
     #     f.add_trace(trace)
 
-    # return f, new_trace_index2name
+    # return f, label2pseudo_trace_index2series_names
 
 
+
+
+    
 # @callback(
 #     Output('intra-cluster-curve-dropdown', 'options'),
 #     Input('curve-clusters-dropdown', 'value'),
@@ -467,7 +466,7 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
 #     Input('curve-clusters-dropdown', 'value'),
 #     Input('k-nearest-slider', 'value'),
 #     Input('selected-curve-cluster', 'clickData'))
-# def update_curve_cluster_heatmap(new_trace_index2name,
+# def update_curve_cluster_heatmap(label2pseudo_trace_index2series_names,
 #                                  selected_cluster,
 #                                  k_nearest,
 #                                  clickData):
@@ -475,7 +474,7 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
 #     # print("clickData")
 #     # print()
 #     # print(clickData)
-#     # print('new-trace-index', new_trace_index2name)
+#     # print('new-trace-index', label2pseudo_trace_index2series_names)
 #     f = go.FigureWidget()
 #     f.layout.hovermode = 'closest'
 #     f.layout.hoverdistance = -1 #ensures no "gaps" for selecting sparse data
@@ -485,7 +484,7 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
 #     selected_series_names = label2series_names[selected_cluster-1]
 #     trace_idx = clickData['points'][0]['curveNumber']
 #     # print('trace_idx', trace_idx)
-#     series_name = new_trace_index2name.get(str(trace_idx), None)  # Wacky cast to str :-(
+#     series_name = label2pseudo_trace_index2series_names.get(str(trace_idx), None)  # Wacky cast to str :-(
 #     # print(series_name)
 #     k_neighbors_dists_of_name = find_k_neighbors(series_name=series_name,
 #                                                 label2dist_matrix=label2dist_matrix,
@@ -561,4 +560,4 @@ def update_selected_cluster_fig(clickData, new_trace_index2name, selected_cluste
 
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)
