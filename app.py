@@ -125,6 +125,7 @@ app.layout = html.Div([
         }
     ),
     
+    # Div contains cluster setting inputs (dropdowns, radio items, and miscellaneous shit)
     html.Div([
         "Number of clusters",
         dcc.Dropdown(cluster_range,
@@ -151,6 +152,10 @@ app.layout = html.Div([
                      id='num-columns'),
 
         html.Br(),
+    ]),
+    
+    # Div contains figs/subfigs relevant to clustering
+    html.Div([
         html.Div(
             html.Div([
                 "Select cluster",
@@ -176,7 +181,7 @@ app.layout = html.Div([
                 ),
 
             style={
-                    "width": "60%",
+                    "width": "65%",
                     "height": "800px",
                     "display": "inline-block",
                     "border": "3px #5c5c5c solid",
@@ -198,7 +203,7 @@ app.layout = html.Div([
                 }
                 ),
             style={
-                    "width": "30%",
+                    "width": "34%",
                     "height": "800px",
                     "display": "inline-block",
                     "border": "3px #5c5c5c solid",
@@ -207,7 +212,14 @@ app.layout = html.Div([
                     "overflow": "hidden"
                 }
         ),
-    ]),
+    ],
+    style={ # Holy I actually centered a div
+        "position": "absolute",
+        "width": "80%",
+        "left": "50%",
+        "transform": "translate(-50%, 0%)"
+    },
+    ),
 ])
 
 
