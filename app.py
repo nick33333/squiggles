@@ -156,70 +156,67 @@ app.layout = html.Div([
     
     # Div contains figs/subfigs relevant to clustering
     html.Div([
-        html.Div(
-            html.Div([
-                "Select cluster",
-                dcc.Dropdown(value=1,
-                             id='curve-clusters-dropdown'),
-
-                dcc.Graph(style={'width': '100%',
-                                 'height': '80%'},
-                          id='selected-curve-cluster',
-                          ),
-                        
-                dcc.Slider(2,
-                           41,
-                           step=None,
-                           id='k-nearest-slider',
-                           value=2,
-                           marks={str(i): str(i) for i in range(1, 41)}),
-                ],
-                style={
-                    "width": "100%",
-                    'height': '100%'
-                }
-                ),
-
+        html.Div([ # Dropdown for fig settings
+            "Select cluster",
+            dcc.Dropdown(value=1,
+                         id='curve-clusters-dropdown'),
+            ],
             style={
-                    "width": "65%",
+                "width": "100%",
+                "padding-bottom": "1%",
+            }
+        ),
+        html.Div([
+            dcc.Graph(style={'width': '100%',
+                             'height': '80%'},
+                      id='selected-curve-cluster',
+                      ),
+                    
+            dcc.Slider(2,
+                       41,
+                       step=None,
+                       id='k-nearest-slider',
+                       value=2,
+                       marks={str(i): str(i) for i in range(1, 41)}),
+            ],
+            style={
+                    "width": "64%",
                     "height": "800px",
                     "display": "inline-block",
                     "border": "3px #5c5c5c solid",
-                    "padding-top": "5px",
-                    "padding-left": "1px",
+                    "padding-top": "1%",
+                    "padding-left": "1%",
                     "overflow": "hidden"
-                }
+                    }
         ),
         html.Div(
-            html.Div(
-                dcc.Graph(figure=fig,
-                          style={'width': '100%',
-                                  'height': '100%'
-                                  }
-                        ),
-                style={
-                    "width": "100%",
-                    'height': '100%'
-                }
-                ),
+            dcc.Graph(figure=fig,
+                      style={'width': '100%',
+                              'height': '100%'
+                              }
+                    ),
             style={
-                    "width": "34%",
+                    "width": "33.2%",
                     "height": "800px",
                     "display": "inline-block",
                     "border": "3px #5c5c5c solid",
-                    "padding-top": "5px",
-                    "padding-left": "1px",
+                    "padding-top": "1%",
+                    "padding-right": "1%",
                     "overflow": "hidden"
                 }
         ),
-    ],
-    style={ # Holy I actually centered a div
-        "position": "absolute",
-        "width": "80%",
-        "left": "50%",
-        "transform": "translate(-50%, 0%)"
-    },
-    ),
+        ],
+        style={ # Holy I actually centered a div
+            "position": "absolute",
+            "width": "90%",
+            "left": "50%",
+            "transform": "translate(-50%, 0%)",
+            "border": "3px #5c5c5c solid",
+            "padding-top": "5px",
+            "padding-left": "5px",
+            
+        },
+        ),
 ])
 
 
