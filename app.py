@@ -192,7 +192,8 @@ app.layout = html.Div([
         html.Div(
             html.Div([
                 "Select cluster",
-                dcc.Dropdown(id='curve-clusters-dropdown'),
+                dcc.Dropdown(value=1,
+                             id='curve-clusters-dropdown'),
 
                 dcc.Graph(style={'width': '100%',
                                  'height': '80%'},
@@ -321,7 +322,11 @@ Gotta fix trace index issue:
     Input('curve-clusters-dropdown', 'value'),
     Input('k-nearest-slider', 'value'),)
 def update_selected_cluster_fig(clickData, selected_cluster, k_nearest):
-    # print('selected_cluster',selected_cluster, type(selected_cluster))
+    print('clickData', type(clickData), '\n', clickData)
+    print('selected_cluster', type(selected_cluster), '\n', selected_cluster)
+    print('k_nearest', type(k_nearest), '\n', k_nearest)
+    print()
+    
     # print("IS THIS THE CLICK DATA?")
     # print(clickData)
     # print()
@@ -356,68 +361,80 @@ def update_selected_cluster_fig(clickData, selected_cluster, k_nearest):
         k_neighbors_names = []
         max_dist = 0.00001
     for idx, name in enumerate(selected_series_names):
-        if name not in k_neighbors_names:
-            # print("regular plot name", name)
-            default_hovertemplate_data = f'<i>{name}<i>' + \
-                                        f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
-                                        f'<br><b>{value_field}</b>:' + '%{y}<br>'             
-            series = Msmc_clustering.name2series[name]
-            trace = go.Scatter(mode='lines',
-                               x=series[time_field],
-                               y=series[value_field],
-                               name=name,
-                               line={'color':default_color,
-                                   'width': default_linewidth},
-                               hovertemplate = default_hovertemplate_data +
-                                               '<extra></extra>'                  
-                            )
-            f.add_trace(trace)
-            # print(label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[idx], name)
-            # print("Same? ", label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[idx] == name)
+        # if name not in k_neighbors_names:
+        #     print("regular plot name", name)
+        #     default_hovertemplate_data = f'<i>{name}<i>' + \
+        #                                 f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
+        #                                 f'<br><b>{value_field}</b>:' + '%{y}<br>'             
+        #     series = Msmc_clustering.name2series[name]
+        #     trace = go.Scatter(mode='lines',
+        #                        x=series[time_field],
+        #                        y=series[value_field],
+        #                        name=name,
+        #                        line={'color':default_color,
+        #                            'width': default_linewidth},
+        #                        hovertemplate = default_hovertemplate_data +
+        #                                        '<extra></extra>'                  
+        #                     )
+        #     f.add_trace(trace)
+        #     # print(label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[idx], name)
+        #     # print("Same? ", label2pseudo_trace_index2series_names.get(selected_cluster-1, None)[idx] == name)
 
-        else:
-            # print("alt plot name", name)
-            # print("alt plot")
-            default_hovertemplate_data = f'<i>{name}<i>' + \
-                                        f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
-                                        f'<br><b>{value_field}</b>:' + '%{y}<br>'             
-            series = Msmc_clustering.name2series[name]
-            trace = go.Scatter(mode='lines',
-                               x=series[time_field],
-                               y=series[value_field],
-                               name=name,
-                               line={'color':alt_color,
-                                   'width': default_linewidth},
-                               hovertemplate = default_hovertemplate_data +
-                                               '<extra></extra>'                  
-                            )
-            f.add_trace(trace)
+        # else:
+        print("alt plot name", name)
+        # print("alt plot")
+        default_hovertemplate_data = f'<i>{name}<i>' + \
+                                    f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
+                                    f'<br><b>{value_field}</b>:' + '%{y}<br>'             
+        series = Msmc_clustering.name2series[name]
+        trace = go.Scatter(mode='lines',
+                           x=series[time_field],
+                           y=series[value_field],
+                           name=name,
+                           line={'color':default_color,
+                               'width': default_linewidth},
+                           hovertemplate = default_hovertemplate_data +
+                                           '<extra></extra>'                  
+                        )
+        f.add_trace(trace)
 
     # print()
     # print('fig data:')
     # print(f.data)
     # print("k_neighbors_dists_of_name", k_neighbors_dists_of_name)
     for name, dist in k_neighbors_dists_of_name:
-        # print('selected plotting')
-        default_hovertemplate_data = f'<i>{name}<i>'
         default_hovertemplate_data = f'<i>{name}<i>' + \
                                     f'<br><b>{time_field}</b>:' + '%{x}</br>' + \
                                     f'<br><b>{value_field}</b>:' + '%{y}<br>' 
         new_hovertemplate = default_hovertemplate_data + f'<br><b>Distance to {series_name}</b>:' + f'{dist}<br>'
+        print('selected plotting of ', name)
+        series = Msmc_clustering.name2series[name]
+        
         (h, s, v) = ((dist/max_dist)*(80/360), 1, 1) # dist is multiplied by 80/360 to  make hsv range from red to greenish
         (r, g, b) = [255*i for i in colorsys.hsv_to_rgb(h, s, v)]
+        trace = go.Scatter(mode='lines',
+                           x=series[time_field],
+                           y=series[value_field],
+                           name=name,
+                           line={'color':f"rgba({r}, {g}, {b}, 1)",
+                               'width': default_linewidth},
+                           hovertemplate = new_hovertemplate +
+                                           '<extra></extra>'                  
+                        )
+        f.add_trace(trace)
+ 
         # print(f"r {r} g {g} b {b}")
-        f.update_traces(
-                          line=dict(
-                                      color=f"rgba({r}, {g}, {b}, 1)",
-                                     ), 
-                          hovertemplate = new_hovertemplate,
-                          selector = dict(
-                                          name=name
-                                         ),
-                         )
+        # f.update_traces(
+        #                   line=dict(
+        #                               color=f"rgba({r}, {g}, {b}, 1)",
+        #                              ), 
+        #                   hovertemplate = new_hovertemplate,
+        #                   selector = dict(
+        #                                   name=name
+        #                                  ),
+        #                  )
 
-        
+    print(len(f.data))
     return f
     # for idx, name in enumerate(selected_series_names):
     #     label2pseudo_trace_index2series_names[idx] = name
