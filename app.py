@@ -158,8 +158,8 @@ app.layout = html.Div([
     html.Div([
         html.Div([ # Dropdown for fig settings
             "Select cluster",
-            dcc.Dropdown(value=1,
-                         id='curve-clusters-dropdown'),
+            # dcc.Dropdown(value=1,
+            #              id='curve-clusters-dropdown'),
             ],
             style={
                 "width": "100%",
@@ -167,6 +167,9 @@ app.layout = html.Div([
             }
         ),
         html.Div([
+            dcc.Dropdown(placeholder="Select cluster to display...",
+                         value=1,
+                         id='curve-clusters-dropdown'),
             dcc.Graph(style={'width': '100%',
                              'height': '80%'},
                       id='selected-curve-cluster',
@@ -253,6 +256,15 @@ Gotta fix trace index issue:
     Input('curve-clusters-dropdown', 'value'),
     Input('k-nearest-slider', 'value'),)
 def update_selected_cluster_fig(clickData, selected_cluster, k_nearest):
+    '''
+    Found problem:
+    When selecting cluster 1 and highlighting a trace with a high number 
+    (say trace 27 out of 29 in cluster 1) and then selecting a different
+    cluster (say cluster 2 which has 14 traces), something in the code forces
+    an update with the supposed trace 27 highlighted in cluster 2 even though
+    there are only 14 traces in it.
+    '''
+    
     # print('clickData', type(clickData), '\n', clickData)
     # print('selected_cluster', type(selected_cluster), '\n', selected_cluster)
     # print('k_nearest', type(k_nearest), '\n', k_nearest)
