@@ -29,7 +29,7 @@ def load_model(taxanomic_class='bird',
     generation_lengths_path = data_path + generation_lengths_path
     model_save_path = models_path + model_name
     # time_window=False
-    time_window = [1.17E4, 2.58E6]
+    time_window = [1.17E4, 2.58E6] # Make model without window 
     mu_dict = {'bird': 1.4e-9,
                'mammal': 2.2e-9}
     m_obj = Msmc_clustering(directory=dataset_path,

@@ -30,8 +30,7 @@ def get_dataset_ids(path, descriptor='.txt', specifier="_GC"):
     return ids
 
 def get_scientific_names(ids, specifier="_GC"):
-    return [id[:id.index(specifier)].replace('_', ' ') for
-            id in ids]
+    return [id[:id.index(specifier)].replace('_', ' ') for id in ids]
     
 
 def get_common_names(scientific_names, lang='en'):
@@ -104,7 +103,7 @@ def fetch_common_names(scientific_names):
         
 if __name__ == '__main__':
     '''Ready to run!'''
-    dir = 'msmc_curve_data_birds/"
+    dir = 'msmc_curve_data_birds/'
     path = f'data/{dir}'
     ids = get_dataset_ids(path=path)
     scientific_names = get_scientific_names(ids)
