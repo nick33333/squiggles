@@ -15,6 +15,7 @@ from MSMC_clustering import *
 from MSMC_plotting import *
 from plotly_curve_heatmap import *
 
+
 def load_model(taxanomic_class='bird',
                models_path='models/100_pts/',
                model_name='curves_80_20_split_birds_100pts_rtp.pkl',
@@ -170,7 +171,7 @@ app.layout = html.Div([
                          value=1,
                          id='curve-clusters-dropdown'),
             dcc.Graph(style={'width': '100%',
-                             'height': '50%'},
+                             'height': '70%'},
                       id='selected-curve-cluster',
                       ),
                     
