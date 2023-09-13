@@ -1,5 +1,5 @@
 # Squiggles: MSMC Time Series Curve Visualizer and Clustering Tool
-![App homepage](images/MSMC%20Clustering%20Tool%20homepage.png)
+![App homepage](images/main%20app.png)
 Python Dash app/dashboard using tslearn for clustering time series data.
 ![Pretty much the whole app](images/catch_my_drift.jpeg)
 
