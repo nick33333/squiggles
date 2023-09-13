@@ -16,6 +16,13 @@ from MSMC_plotting import *
 from plotly_curve_heatmap import *
 
 
+'''
+TODO:
+- Now with common names, refer to curves by common name and move file name to a new field called "file name" or something
+- Get loading a model and summary stats like intended cluster size or points working
+- Get creating a model on the fly working
+'''
+
 def load_model(taxanomic_class='bird',
                models_path='models/100_pts/',
                model_name='curves_80_20_split_birds_100pts_rtp.pkl',
@@ -171,7 +178,7 @@ app.layout = html.Div([
                          value=1,
                          id='curve-clusters-dropdown'),
             dcc.Graph(style={'width': '100%',
-                             'height': '80%'},
+                             'height': '50%'},
                       id='selected-curve-cluster',
                       ),
                     
