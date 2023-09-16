@@ -12,6 +12,7 @@ Python Dash app/dashboard using tslearn for clustering time series data.
 # The dealio
 ![Pretty much the whole app](images/catch_my_drift.jpeg)
 
+
 # TODO:
 - Now with common names, refer to curves by common name and move file name to a new field called "file name" or something
 - Get loading a model and summary stats like intended cluster size or points working
